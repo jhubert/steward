@@ -7,3 +7,23 @@ alice_telegram:
   status: active
   tags: []
   metadata: {}
+
+alice_jennifer:
+  workspace: default
+  user: alice
+  agent: jennifer
+  channel: telegram
+  external_thread_key: "444444"
+  status: active
+  tags: []
+  metadata: {}
+
+bob_jennifer:
+  workspace: default
+  user: bob
+  agent: jennifer
+  channel: telegram
+  external_thread_key: "555555"
+  status: active
+  tags: []
+  metadata: {}

@@ -2,6 +2,8 @@ class Agent < ApplicationRecord
   include WorkspaceScoped
 
   has_many :conversations, dependent: :destroy
+  has_many :agent_principals, dependent: :destroy
+  has_many :principals, through: :agent_principals, source: :user
 
   validates :name, presence: true
   validates :system_prompt, presence: true
@@ -19,8 +21,28 @@ class Agent < ApplicationRecord
   end
 
   def token_budgets
-    defaults = { 'agent_core' => 800, 'skills' => 2000, 'state' => 1500, 'history' => 4000, 'response' => 4000 }
+    defaults = { 'agent_core' => 800, 'skills' => 2000, 'state' => 1500, 'history' => 4000, 'response' => 4000, 'principal_context' => 1200 }
     defaults.merge(settings&.dig('token_budgets') || {})
+  end
+
+  def principal_mode?
+    agent_principals.any?
+  end
+
+  def principal?(user)
+    agent_principals.exists?(user: user)
+  end
+
+  def principal_record(user)
+    agent_principals.find_by(user: user)
+  end
+
+  def fellow_principals(user)
+    agent_principals.where.not(user: user).includes(:user)
+  end
+
+  def principal_roster
+    agent_principals.includes(:user)
   end
 
   def telegram_bot_token

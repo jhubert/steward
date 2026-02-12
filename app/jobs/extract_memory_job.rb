@@ -11,7 +11,7 @@ class ExtractMemoryJob < ApplicationJob
     assistant_message = conversation.messages.find(assistant_message_id)
 
     # Load recent memory items for dedup context
-    context = MemoryItem.where(user: conversation.user).order(created_at: :desc).limit(50)
+    context = dedup_context(conversation)
 
     extractor = Memory::Extractor.new(agent: conversation.agent)
     items = extractor.call(
@@ -39,5 +39,18 @@ class ExtractMemoryJob < ApplicationJob
     Rails.logger.info(
       "[Memory] Conversation #{conversation.id}: extracted #{items.size} items"
     )
+  end
+
+  private
+
+  def dedup_context(conversation)
+    agent = conversation.agent
+
+    if agent.principal_mode?
+      principal_user_ids = agent.agent_principals.pluck(:user_id)
+      MemoryItem.where(user_id: principal_user_ids).order(created_at: :desc).limit(50)
+    else
+      MemoryItem.where(user: conversation.user).order(created_at: :desc).limit(50)
+    end
   end
 end

@@ -1,1 +1,31 @@
-# empty for now
+alice_preference:
+  workspace: default
+  user: alice
+  conversation: alice_jennifer
+  category: preference
+  content: "Alice prefers morning meetings before 10am"
+  metadata: {}
+
+alice_fact:
+  workspace: default
+  user: alice
+  conversation: alice_jennifer
+  category: fact
+  content: "Alice is based in Toronto"
+  metadata: {}
+
+bob_fact:
+  workspace: default
+  user: bob
+  conversation: bob_jennifer
+  category: fact
+  content: "Bob manages the operations team"
+  metadata: {}
+
+bob_commitment:
+  workspace: default
+  user: bob
+  conversation: bob_jennifer
+  category: commitment
+  content: "Bob committed to delivering the Q2 report by Friday"
+  metadata: {}

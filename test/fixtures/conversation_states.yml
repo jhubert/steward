@@ -6,3 +6,21 @@ alice_telegram_state:
   pinned_facts: []
   active_goals: []
   summarized_through_message_id: null
+
+alice_jennifer_state:
+  conversation: alice_jennifer
+  workspace: default
+  user: alice
+  summary: null
+  pinned_facts: []
+  active_goals: []
+  summarized_through_message_id: null
+
+bob_jennifer_state:
+  conversation: bob_jennifer
+  workspace: default
+  user: bob
+  summary: null
+  pinned_facts: []
+  active_goals: []
+  summarized_through_message_id: null

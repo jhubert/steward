@@ -29,10 +29,11 @@ Rails 8.1, Ruby 3.4, PostgreSQL, Solid Queue, Anthropic Claude API, HTTPX
 Every response is assembled from **scoped memory layers**, not from "the whole conversation." The system constructs a prompt per turn from:
 
 1. **Layer A — Agent Core**: System prompt, personality, rules (always sent)
-2. **Layer S — Active Skills**: SKILL.md instructions loaded on demand
-3. **Layer B — Conversation State**: Rolling summary, pinned facts, active goals (always sent)
-4. **Layer C — Recent Messages**: Sliding window of recent history (always sent)
-5. **Layer D — Long-Term Recall**: Retrieved memory items (only when relevant, Phase 2)
+2. **Layer P — Principal Context**: Cross-principal awareness, roster, discretion guidelines, fellow principals' memories (only for principal-mode agents)
+3. **Layer S — Active Skills**: SKILL.md instructions loaded on demand
+4. **Layer B — Conversation State**: Rolling summary, pinned facts, active goals (always sent)
+5. **Layer C — Recent Messages**: Sliding window of recent history (always sent)
+6. **Layer D — Long-Term Recall**: Retrieved memory items (only when relevant, Phase 2)
 
 ### Multi-Agent Model
 
@@ -54,6 +55,17 @@ Agent.create!(
 )
 ```
 Then: `bin/rails telegram:set_webhook[Lawyer]`
+
+### Principal Model
+
+Agents can optionally serve multiple **principals** (users). When an agent has principals, it gains cross-user awareness via **Layer P** in prompt assembly — it knows who it's talking to, who else it serves, and relevant facts about all its principals. Agents without principals are completely unaffected.
+
+- `AgentPrincipal` — join model linking Agent ↔ User with role/display_name
+- `agent.principal_mode?` — true when agent has any principals
+- `agent.principal?(user)` — checks if user is a registered principal
+- `agent.fellow_principals(user)` — other principals excluding given user
+- `Prompt::PrincipalContext` — builds Layer P content (current speaker, roster, discretion guidelines, cross-principal memories)
+- `ExtractMemoryJob` — dedup context expands to all principal user_ids in principal mode
 
 ### Multi-Tenancy & Isolation
 
@@ -82,6 +94,7 @@ Adapter contract:
 | Agent | Bot persona. Has its own Telegram bot token, system prompt, model settings |
 | Conversation | One per thread per user per agent per channel |
 | Message | Append-only log (roles: user, assistant, system) |
+| AgentPrincipal | Join model: agent ↔ user with role, display_name, permissions |
 | ConversationState | Layer B: summary, pinned_facts, active_goals, summarized_through pointer |
 | MemoryItem | Layer D: extracted facts/decisions. Categories: decision, preference, fact, commitment |
 
@@ -104,7 +117,7 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 - **No service objects.** Domain logic on models, POROs in `app/models/<namespace>/` for concepts (Prompt::Assembler, Compaction::Summarizer, Memory::Extractor, Adapters::Telegram, Skills::Registry).
 - **Date/Time**: Always `Date.current` / `Time.current`.
 - **LLM client**: Use the `ANTHROPIC_CLIENT` constant (initialized in `config/initializers/anthropic.rb`). API: `ANTHROPIC_CLIENT.messages.create(model:, max_tokens:, system:, messages:)`. Response: `response.content.first.text`, `response.usage.output_tokens`.
-- **Token budgets**: Defined per agent in `agent.settings["token_budgets"]`. Defaults: agent_core=800, skills=2000, state=1500, history=4000, response=4000.
+- **Token budgets**: Defined per agent in `agent.settings["token_budgets"]`. Defaults: agent_core=800, skills=2000, state=1500, history=4000, response=4000, principal_context=1200.
 - **Per-agent bot tokens**: `agent.telegram_bot_token` reads from `settings["telegram_bot_token"]`, falling back to global `credentials.telegram.bot_token`.
 - **Extraction model**: `agent.extraction_model` reads from `settings["extraction_model"]`, defaults to `claude-haiku-4-5-20251001` (cheap, runs on every message).
 
@@ -121,17 +134,19 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 
 - Minitest with fixtures
 - `as_workspace(:default)` in setup to set Current.workspace
-- Fixtures: workspaces (default, other), users (alice, bob, eve), agents (steward), conversations (alice_telegram), messages (alice_hello, steward_reply)
-- 32 tests covering models, adapters, prompt assembly, skills
+- Fixtures: workspaces (default, other), users (alice, bob, eve), agents (steward, jennifer), agent_principals (jennifer_alice, jennifer_bob), conversations (alice_telegram, alice_jennifer, bob_jennifer), messages, memory_items
+- 75 tests covering models, adapters, prompt assembly, skills, principal context
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `app/models/agent.rb` | Bot persona, model/token config, telegram_bot_token |
+| `app/models/agent.rb` | Bot persona, model/token config, telegram_bot_token, principal helpers |
+| `app/models/agent_principal.rb` | Agent ↔ User join model with role/display_name |
 | `app/models/concerns/workspace_scoped.rb` | Tenant isolation concern |
 | `app/models/current.rb` | Current.workspace thread-local |
-| `app/models/prompt/assembler.rb` | Builds LLM messages array from memory layers |
+| `app/models/prompt/assembler.rb` | Builds LLM messages array from memory layers (A, P, S, B, C) |
+| `app/models/prompt/principal_context.rb` | Builds Layer P: cross-principal awareness |
 | `app/models/compaction/summarizer.rb` | Rolling conversation summary via LLM |
 | `app/models/memory/extractor.rb` | Extracts structured facts from exchanges via LLM |
 | `app/models/adapters/telegram.rb` | Telegram normalization + typing + reply |

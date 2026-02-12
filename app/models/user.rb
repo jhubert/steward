@@ -4,6 +4,8 @@ class User < ApplicationRecord
   has_many :conversations, dependent: :destroy
   has_many :messages, dependent: :destroy
   has_many :memory_items, dependent: :destroy
+  has_many :agent_principals, dependent: :destroy
+  has_many :principal_agents, through: :agent_principals, source: :agent
 
   validates :email, uniqueness: { scope: :workspace_id }, allow_nil: true
 

@@ -36,4 +36,23 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     messages = Prompt::Assembler.new(@conversation).call
     assert_includes messages.first[:content], 'Alice prefers concise answers'
   end
+
+  test 'includes Layer P for principal-mode agents' do
+    conversation = conversations(:alice_jennifer)
+    conversation.ensure_state!
+
+    messages = Prompt::Assembler.new(conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Current Speaker'
+    assert_includes system_content, 'Alice (CEO)'
+  end
+
+  test 'omits Layer P for non-principal agents' do
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, 'Current Speaker'
+    assert_not_includes system_content, 'Your Principals'
+  end
 end

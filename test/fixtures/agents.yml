@@ -3,3 +3,9 @@ steward:
   name: Steward
   system_prompt: "You are Steward, a helpful AI assistant."
   settings: {}
+
+jennifer:
+  workspace: default
+  name: Jennifer
+  system_prompt: "You are Jennifer, an executive assistant serving multiple principals."
+  settings: {}

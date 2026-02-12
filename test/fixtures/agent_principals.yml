@@ -1,0 +1,17 @@
+jennifer_alice:
+  workspace: default
+  agent: jennifer
+  user: alice
+  role: "CEO"
+  display_name: "Alice"
+  permissions: {}
+  metadata: {}
+
+jennifer_bob:
+  workspace: default
+  agent: jennifer
+  user: bob
+  role: "COO"
+  display_name: "Bob"
+  permissions: {}
+  metadata: {}

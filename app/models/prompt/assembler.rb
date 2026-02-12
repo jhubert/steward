@@ -23,6 +23,7 @@ module Prompt
     def build_system_content
       parts = []
       parts << agent_core
+      parts << principal_context if @agent.principal_mode?
       parts << skill_instructions if active_skills.any?
       parts << conversation_state if @state.summary.present? || @state.pinned_facts.present?
       parts.compact.join("\n\n---\n\n")
@@ -30,6 +31,10 @@ module Prompt
 
     def agent_core
       @agent.system_prompt
+    end
+
+    def principal_context
+      Prompt::PrincipalContext.new(@conversation, budget: @budgets['principal_context']).call
     end
 
     def skill_instructions
