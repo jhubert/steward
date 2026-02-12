@@ -20,7 +20,7 @@ module Compaction
     def call(existing_summary:, messages:)
       content = build_prompt(existing_summary, messages)
 
-      response = ANTHROPIC_CLIENT.messages.create(
+      response = Rails.configuration.anthropic_client.messages.create(
         model: @agent.summarization_model,
         max_tokens: 1500,
         system: PROMPT,

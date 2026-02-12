@@ -38,9 +38,10 @@ module Tools
     end
 
     def build_argv(input)
+      normalized = input.transform_keys(&:to_s)
       tokens = Shellwords.shellsplit(@tool.command_template)
       tokens.map do |token|
-        token.gsub(/\{(\w+)\}/) { input.fetch($1, $1) .to_s }
+        token.gsub(/\{(\w+)\}/) { normalized.fetch($1, $1).to_s }
       end
     end
 

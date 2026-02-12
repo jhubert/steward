@@ -26,7 +26,7 @@ module Memory
     def call(user_message:, assistant_reply:, context: [])
       content = build_prompt(user_message, assistant_reply, context)
 
-      response = ANTHROPIC_CLIENT.messages.create(
+      response = Rails.configuration.anthropic_client.messages.create(
         model: @agent.extraction_model,
         max_tokens: 1000,
         system: PROMPT,

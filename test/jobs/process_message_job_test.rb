@@ -33,7 +33,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     messages_api = stub
     messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
-    ANTHROPIC_CLIENT.stubs(:messages).returns(messages_api)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
 
     # Setup: jennifer has tools, so use a jennifer conversation
     jennifer_conversation = conversations(:alice_jennifer)
@@ -70,7 +70,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     messages_api = stub
     messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
-    ANTHROPIC_CLIENT.stubs(:messages).returns(messages_api)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
 
     jennifer_conversation = conversations(:alice_jennifer)
     jennifer_message = messages(:alice_jennifer_hello)
@@ -93,7 +93,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     messages_api = stub
     messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
-    ANTHROPIC_CLIENT.stubs(:messages).returns(messages_api)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
 
     jennifer_message = messages(:alice_jennifer_hello)
 
@@ -121,7 +121,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     messages_api = stub
     messages_api.stubs(:create).returns(tool_use_response)
-    ANTHROPIC_CLIENT.stubs(:messages).returns(messages_api)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
 
     jennifer_message = messages(:alice_jennifer_hello)
 
@@ -133,8 +133,8 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     reply = Message.last
     assert_equal '(Tool use limit reached)', reply.content
 
-    # Safety valve kicks in at MAX_TOOL_ROUNDS — the last round breaks before execution
-    assert_equal ProcessMessageJob::MAX_TOOL_ROUNDS - 1, ToolExecution.count
+    # Safety valve kicks in at agent.max_tool_rounds (default 10) — the last round breaks before execution
+    assert_equal agents(:jennifer).max_tool_rounds - 1, ToolExecution.count
   end
 
   test 'token totals accumulate across rounds' do
@@ -149,7 +149,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     messages_api = stub
     messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
-    ANTHROPIC_CLIENT.stubs(:messages).returns(messages_api)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
 
     jennifer_message = messages(:alice_jennifer_hello)
 
@@ -177,8 +177,8 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     ProcessMessageJob.perform_now(@message.id)
 
     # LLM should not be called again on retry
-    ANTHROPIC_CLIENT.unstub(:messages)
-    ANTHROPIC_CLIENT.expects(:messages).never
+    Rails.configuration.anthropic_client.unstub(:messages)
+    Rails.configuration.anthropic_client.expects(:messages).never
 
     ProcessMessageJob.perform_now(@message.id)
 
@@ -209,14 +209,14 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_equal 'Hello!', reply.content
   end
 
-  test 'agents without tools skip tool definitions' do
-    # Steward has no tools
+  test 'agents without agent-specific tools still get builtin tools' do
     stub_text_response('Hi there!')
 
     ProcessMessageJob.perform_now(@message.id)
 
     reply = Message.last
     assert_equal 'Hi there!', reply.content
+    assert_nil reply.metadata['tool_calls']
   end
 
   private
@@ -229,7 +229,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
   def stub_text_response(text)
     response = build_text_response(text)
     messages_api = stub(create: response)
-    ANTHROPIC_CLIENT.stubs(:messages).returns(messages_api)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
   end
 
   def build_text_response(text, input_tokens: 100, output_tokens: 50)

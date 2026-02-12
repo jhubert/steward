@@ -1,9 +1,9 @@
 class ProcessMessageJob < ApplicationJob
   queue_as :default
 
-  MAX_TOOL_ROUNDS = 10
+  MAX_TOOL_ROUNDS = 50
 
-  retry_on Adapters::DeliveryError, wait: 5.seconds, attempts: 3 do |job, error|
+  retry_on "Adapters::DeliveryError", wait: 5.seconds, attempts: 3 do |job, error|
     notify_failure(job.arguments.first, error)
   end
 
@@ -65,10 +65,12 @@ class ProcessMessageJob < ApplicationJob
     total_input_tokens = 0
     total_output_tokens = 0
     tool_call_summaries = []
+    tool_log_rounds = []
     reply_text = nil
     response_model = nil
     started_at = Time.current
     rounds = 0
+    max_rounds = [agent.max_tool_rounds, MAX_TOOL_ROUNDS].min
 
     loop do
       api_params = {
@@ -79,7 +81,7 @@ class ProcessMessageJob < ApplicationJob
       }
       api_params[:tools] = tool_definitions if tool_definitions
 
-      response = ANTHROPIC_CLIENT.messages.create(**api_params)
+      response = Rails.configuration.anthropic_client.messages.create(**api_params)
       response_model = response.model
       total_input_tokens += response.usage.input_tokens
       total_output_tokens += response.usage.output_tokens
@@ -87,7 +89,7 @@ class ProcessMessageJob < ApplicationJob
       if response.stop_reason.to_s == 'tool_use'
         rounds += 1
 
-        if rounds >= MAX_TOOL_ROUNDS
+        if rounds >= max_rounds
           reply_text = extract_text(response.content)
           reply_text = "(Tool use limit reached)" if reply_text.blank?
           break
@@ -100,6 +102,7 @@ class ProcessMessageJob < ApplicationJob
 
           result = execute_tool(block, agent, conversation)
           tool_call_summaries << result[:summary]
+          tool_log_rounds << result[:log_entry]
 
           { type: 'tool_result', tool_use_id: block.id, content: result[:content] }
         end
@@ -112,6 +115,15 @@ class ProcessMessageJob < ApplicationJob
         reply_text = extract_text(response.content)
         break
       end
+    end
+
+    # Persist tool activity log for cross-message memory
+    if tool_log_rounds.any?
+      state = conversation.ensure_state!
+      state.append_tool_log!({
+        "timestamp" => Time.current.iso8601,
+        "rounds" => tool_log_rounds
+      })
     end
 
     latency_ms = ((Time.current - started_at) * 1000).round
@@ -168,16 +180,22 @@ class ProcessMessageJob < ApplicationJob
   end
 
   def execute_tool(tool_use_block, agent, conversation)
+    input = tool_use_block.input.is_a?(Hash) ? tool_use_block.input : {}
+
+    # Handle virtual (built-in) tools
+    virtual_result = execute_virtual_tool(tool_use_block.name, input, conversation)
+    return virtual_result if virtual_result
+
     agent_tool = agent.enabled_tools.find_by(name: tool_use_block.name)
 
     unless agent_tool
       return {
         content: "Error: Unknown tool '#{tool_use_block.name}'",
-        summary: { name: tool_use_block.name, exit_code: nil, error: "unknown tool" }
+        summary: { name: tool_use_block.name, exit_code: nil, error: "unknown tool" },
+        log_entry: { "tool" => tool_use_block.name, "error" => "unknown tool" }
       }
     end
 
-    input = tool_use_block.input.is_a?(Hash) ? tool_use_block.input : {}
     executor = Tools::Executor.new(agent_tool: agent_tool)
     started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     result = executor.call(input)
@@ -206,8 +224,34 @@ class ProcessMessageJob < ApplicationJob
 
     {
       content: content,
-      summary: { name: agent_tool.name, exit_code: result.exit_code, duration_ms: duration_ms, timed_out: result.timed_out }
+      summary: { name: agent_tool.name, exit_code: result.exit_code, duration_ms: duration_ms, timed_out: result.timed_out },
+      log_entry: { "tool" => agent_tool.name, "input" => input.to_s.truncate(200), "output" => content.to_s.truncate(500), "exit_code" => result.exit_code }
     }
+  end
+
+  def execute_virtual_tool(name, input, conversation)
+    case name
+    when "save_note"
+      state = conversation.ensure_state!
+      note = input["content"].to_s
+      new_scratchpad = state.scratchpad.to_s
+      new_scratchpad += "\n" if new_scratchpad.present?
+      new_scratchpad += "[#{Time.current.strftime('%Y-%m-%d %H:%M')}] #{note}"
+      state.update!(scratchpad: new_scratchpad.last(10_000))
+      {
+        content: "Note saved to scratchpad.",
+        summary: { name: "save_note" },
+        log_entry: { "tool" => "save_note", "input" => note.truncate(200), "output" => "saved" }
+      }
+    when "read_notes"
+      state = conversation.ensure_state!
+      content = state.scratchpad.present? ? state.scratchpad : "(Scratchpad is empty)"
+      {
+        content: content,
+        summary: { name: "read_notes" },
+        log_entry: { "tool" => "read_notes", "output" => content.truncate(200) }
+      }
+    end
   end
 
   def extract_text(content_blocks)

@@ -25,7 +25,7 @@ module Prompt
       parts << agent_core
       parts << principal_context if @agent.principal_mode?
       parts << skill_instructions if active_skills.any?
-      parts << conversation_state if @state.summary.present? || @state.pinned_facts.present?
+      parts << conversation_state if has_conversation_state?
       parts.compact.join("\n\n---\n\n")
     end
 
@@ -47,6 +47,14 @@ module Prompt
       @active_skills ||= Skills::Registry.instance.active_skills_for(@conversation)
     end
 
+    def has_conversation_state?
+      @state.summary.present? ||
+        @state.pinned_facts.present? && @state.pinned_facts.any? ||
+        @state.active_goals.present? && @state.active_goals.any? ||
+        @state.tool_log.present? && @state.tool_log.any? ||
+        @state.scratchpad.present?
+    end
+
     def conversation_state
       parts = []
 
@@ -62,7 +70,34 @@ module Prompt
         parts << "## Active Goals\n#{goals}"
       end
 
+      if @state.tool_log.present? && @state.tool_log.any?
+        entries = @state.tool_log.last(5).map { |entry| format_tool_log_entry(entry) }
+        parts << "## Recent Tool Activity\n#{entries.join("\n\n")}"
+      end
+
+      if @state.scratchpad.present?
+        parts << "## Your Scratchpad\n#{@state.scratchpad.truncate(2000)}"
+      end
+
       parts.join("\n\n")
+    end
+
+    def format_tool_log_entry(entry)
+      timestamp = entry["timestamp"]
+      rounds = entry["rounds"] || []
+      lines = ["[#{timestamp}]"]
+      rounds.each do |round|
+        tool = round["tool"]
+        input = round["input"]
+        output = round["output"]
+        exit_code = round["exit_code"]
+        line = "- #{tool}"
+        line += "(#{input})" if input.present?
+        line += " → exit:#{exit_code}" if exit_code
+        line += "\n  #{output.to_s.truncate(200)}" if output.present?
+        lines << line
+      end
+      lines.join("\n")
     end
 
     def build_history

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_12_162120) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_12_184259) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -64,8 +64,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_12_162120) do
     t.bigint "conversation_id", null: false
     t.datetime "created_at", null: false
     t.jsonb "pinned_facts", default: []
+    t.text "scratchpad", default: ""
     t.bigint "summarized_through_message_id"
     t.text "summary"
+    t.jsonb "tool_log", default: []
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.bigint "workspace_id", null: false

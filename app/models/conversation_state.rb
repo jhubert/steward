@@ -14,4 +14,11 @@ class ConversationState < ApplicationRecord
       summarized_through_message_id: through_message_id
     )
   end
+
+  MAX_TOOL_LOG_ENTRIES = 10
+
+  def append_tool_log!(entry)
+    new_log = (tool_log || []) + [entry]
+    update!(tool_log: new_log.last(MAX_TOOL_LOG_ENTRIES))
+  end
 end

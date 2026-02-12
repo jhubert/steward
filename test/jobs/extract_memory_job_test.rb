@@ -65,6 +65,6 @@ class ExtractMemoryJobTest < ActiveSupport::TestCase
     )
 
     messages_api = stub(create: response)
-    ANTHROPIC_CLIENT.stubs(:messages).returns(messages_api)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
   end
 end

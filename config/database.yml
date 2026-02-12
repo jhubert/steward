@@ -88,8 +88,6 @@ production:
   primary: &primary_production
     <<: *default
     database: steward_production
-    username: steward
-    password: <%= ENV["STEWARD_DATABASE_PASSWORD"] %>
   cache:
     <<: *primary_production
     database: steward_production_cache

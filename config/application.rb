@@ -38,5 +38,8 @@ module Steward
 
     # Don't generate system test files.
     config.generators.system_tests = nil
+
+    # Anthropic client — set in config/initializers/anthropic.rb
+    config.anthropic_client = nil
   end
 end

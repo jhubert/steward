@@ -6,6 +6,8 @@ alice_telegram_state:
   pinned_facts: []
   active_goals: []
   summarized_through_message_id: null
+  tool_log: []
+  scratchpad: ""
 
 alice_jennifer_state:
   conversation: alice_jennifer
@@ -15,6 +17,8 @@ alice_jennifer_state:
   pinned_facts: []
   active_goals: []
   summarized_through_message_id: null
+  tool_log: []
+  scratchpad: ""
 
 bob_jennifer_state:
   conversation: bob_jennifer
@@ -24,3 +28,5 @@ bob_jennifer_state:
   pinned_facts: []
   active_goals: []
   summarized_through_message_id: null
+  tool_log: []
+  scratchpad: ""

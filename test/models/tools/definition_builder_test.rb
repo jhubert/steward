@@ -5,21 +5,28 @@ class Tools::DefinitionBuilderTest < ActiveSupport::TestCase
     as_workspace(:default)
   end
 
-  test 'returns nil for agent with no tools' do
+  test 'returns builtin tools for agent with no agent-specific tools' do
     builder = Tools::DefinitionBuilder.new(agent: agents(:steward))
-    assert_nil builder.call
+    definitions = builder.call
+
+    assert_kind_of Array, definitions
+    names = definitions.map { |d| d[:name] }
+    assert_includes names, 'save_note'
+    assert_includes names, 'read_notes'
   end
 
-  test 'returns tool definitions for agent with enabled tools' do
+  test 'returns agent tools plus builtin tools for agent with enabled tools' do
     builder = Tools::DefinitionBuilder.new(agent: agents(:jennifer))
     definitions = builder.call
 
     assert_kind_of Array, definitions
-    assert_equal 2, definitions.length
+    assert_equal 4, definitions.length
 
     names = definitions.map { |d| d[:name] }
     assert_includes names, 'find_availability'
     assert_includes names, 'search_contacts'
+    assert_includes names, 'save_note'
+    assert_includes names, 'read_notes'
     # Disabled tool should not appear
     assert_not_includes names, 'send_invoice'
   end
