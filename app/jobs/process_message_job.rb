@@ -54,6 +54,9 @@ class ProcessMessageJob < ApplicationJob
 
       # Check if compaction is needed
       CompactConversationJob.perform_later(conversation.id) if conversation.needs_compaction?
+
+      # Extract memory items from the exchange
+      ExtractMemoryJob.perform_later(conversation.id, message.id, reply.id)
     end
   end
 

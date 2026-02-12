@@ -15,6 +15,16 @@ class AgentTest < ActiveSupport::TestCase
     assert_equal 'claude-opus-4-6', agent.model
   end
 
+  test 'extraction_model returns default when not configured' do
+    assert_equal 'claude-haiku-4-5-20251001', agents(:steward).extraction_model
+  end
+
+  test 'extraction_model returns configured value' do
+    agent = agents(:steward)
+    agent.update!(settings: { 'extraction_model' => 'claude-sonnet-4-5-20250929' })
+    assert_equal 'claude-sonnet-4-5-20250929', agent.extraction_model
+  end
+
   test 'token_budgets returns defaults' do
     budgets = agents(:steward).token_budgets
     assert_equal 800, budgets['agent_core']

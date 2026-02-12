@@ -83,12 +83,13 @@ Adapter contract:
 | Conversation | One per thread per user per agent per channel |
 | Message | Append-only log (roles: user, assistant, system) |
 | ConversationState | Layer B: summary, pinned_facts, active_goals, summarized_through pointer |
-| MemoryItem | Layer D: extracted facts/decisions (Phase 2) |
+| MemoryItem | Layer D: extracted facts/decisions. Categories: decision, preference, fact, commitment |
 
 ### Jobs
 
 - **ProcessMessageJob**: Locks conversation → sends typing → assembles prompt → calls Anthropic → stores reply → sends via adapter. Single-writer per conversation.
 - **CompactConversationJob**: Rolling summarization when unsummarized messages exceed threshold (20). Runs after response is sent.
+- **ExtractMemoryJob**: Extracts structured facts (decision, preference, fact, commitment) from each user/assistant exchange into `MemoryItem` records. Runs on `:low_priority` queue after every reply. Uses `Memory::Extractor` with the agent's `extraction_model` (default: Haiku).
 
 ### Skills
 
@@ -100,11 +101,12 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 
 ## Conventions
 
-- **No service objects.** Domain logic on models, POROs in `app/models/<namespace>/` for concepts (Prompt::Assembler, Compaction::Summarizer, Adapters::Telegram, Skills::Registry).
+- **No service objects.** Domain logic on models, POROs in `app/models/<namespace>/` for concepts (Prompt::Assembler, Compaction::Summarizer, Memory::Extractor, Adapters::Telegram, Skills::Registry).
 - **Date/Time**: Always `Date.current` / `Time.current`.
 - **LLM client**: Use the `ANTHROPIC_CLIENT` constant (initialized in `config/initializers/anthropic.rb`). API: `ANTHROPIC_CLIENT.messages.create(model:, max_tokens:, system:, messages:)`. Response: `response.content.first.text`, `response.usage.output_tokens`.
 - **Token budgets**: Defined per agent in `agent.settings["token_budgets"]`. Defaults: agent_core=800, skills=2000, state=1500, history=4000, response=4000.
 - **Per-agent bot tokens**: `agent.telegram_bot_token` reads from `settings["telegram_bot_token"]`, falling back to global `credentials.telegram.bot_token`.
+- **Extraction model**: `agent.extraction_model` reads from `settings["extraction_model"]`, defaults to `claude-haiku-4-5-20251001` (cheap, runs on every message).
 
 ## Infrastructure
 
@@ -131,11 +133,13 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 | `app/models/current.rb` | Current.workspace thread-local |
 | `app/models/prompt/assembler.rb` | Builds LLM messages array from memory layers |
 | `app/models/compaction/summarizer.rb` | Rolling conversation summary via LLM |
+| `app/models/memory/extractor.rb` | Extracts structured facts from exchanges via LLM |
 | `app/models/adapters/telegram.rb` | Telegram normalization + typing + reply |
 | `app/models/adapters/base.rb` | Adapter interface |
 | `app/models/skills/registry.rb` | Loads SKILL.md files, singleton |
 | `app/jobs/process_message_job.rb` | Core message processing pipeline |
 | `app/jobs/compact_conversation_job.rb` | Triggers rolling summarization |
+| `app/jobs/extract_memory_job.rb` | Extracts memory items after each reply |
 | `app/controllers/webhooks_controller.rb` | Routes webhooks to agents by :agent_id |
 | `config/initializers/anthropic.rb` | ANTHROPIC_CLIENT constant |
 | `lib/tasks/telegram.rake` | Per-agent webhook management |

@@ -14,6 +14,10 @@ class Agent < ApplicationRecord
     settings&.dig('summarization_model') || 'claude-sonnet-4-5-20250929'
   end
 
+  def extraction_model
+    settings&.dig('extraction_model') || 'claude-haiku-4-5-20251001'
+  end
+
   def token_budgets
     defaults = { 'agent_core' => 800, 'skills' => 2000, 'state' => 1500, 'history' => 4000, 'response' => 4000 }
     defaults.merge(settings&.dig('token_budgets') || {})
