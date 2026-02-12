@@ -42,16 +42,23 @@ module Adapters
     def send_reply(conversation, message)
       chat_id = conversation.external_thread_key
 
+      # Try Markdown first, fall back to plain text if Telegram can't parse it
       response = HTTPX.post(
         "#{API_BASE}/bot#{@bot_token}/sendMessage",
-        json: {
-          chat_id: chat_id,
-          text: message.content,
-          parse_mode: 'Markdown'
-        }
+        json: { chat_id: chat_id, text: message.content, parse_mode: 'Markdown' }
       )
 
-      Rails.logger.error("[Telegram] Failed to send message: #{response.body}") unless response.status == 200
+      if response.status != 200
+        Rails.logger.warn("[Telegram] Markdown failed, retrying as plain text: #{response.body}")
+        response = HTTPX.post(
+          "#{API_BASE}/bot#{@bot_token}/sendMessage",
+          json: { chat_id: chat_id, text: message.content }
+        )
+      end
+
+      if response.status != 200
+        raise Adapters::DeliveryError, "Telegram sendMessage failed (#{response.status}): #{response.body}"
+      end
 
       response
     end

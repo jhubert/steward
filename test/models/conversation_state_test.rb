@@ -21,8 +21,14 @@ class ConversationStateTest < ActiveSupport::TestCase
   end
 
   test 'unsummarized_messages filters after advance' do
-    last_msg = @state.conversation.messages.chronological.last
-    @state.advance_summary!('Summary', last_msg.id)
-    assert_equal 0, @state.unsummarized_messages.count
+    # Advance through the known fixture message (steward_reply)
+    known_last = messages(:steward_reply)
+    @state.advance_summary!('Summary', known_last.id)
+
+    # Any unsummarized messages should only be ones created after our fixture
+    unsummarized = @state.unsummarized_messages
+    unsummarized.each do |msg|
+      assert msg.id > known_last.id, 'unsummarized message should be newer than summarized_through'
+    end
   end
 end

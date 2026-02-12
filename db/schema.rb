@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_12_152226) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_12_162120) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -28,6 +28,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_12_152226) do
     t.index ["user_id"], name: "index_agent_principals_on_user_id"
     t.index ["workspace_id", "agent_id", "user_id"], name: "idx_agent_principals_unique", unique: true
     t.index ["workspace_id"], name: "index_agent_principals_on_workspace_id"
+  end
+
+  create_table "agent_tools", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.text "command_template", null: false
+    t.datetime "created_at", null: false
+    t.text "credentials_json"
+    t.text "description", null: false
+    t.boolean "enabled", default: true
+    t.jsonb "input_schema", default: {}, null: false
+    t.jsonb "metadata", default: {}
+    t.string "name", null: false
+    t.integer "timeout_seconds", default: 30
+    t.datetime "updated_at", null: false
+    t.string "working_directory"
+    t.bigint "workspace_id", null: false
+    t.index ["agent_id"], name: "index_agent_tools_on_agent_id"
+    t.index ["workspace_id", "agent_id", "name"], name: "idx_agent_tools_unique", unique: true
+    t.index ["workspace_id"], name: "index_agent_tools_on_workspace_id"
   end
 
   create_table "agents", force: :cascade do |t|
@@ -225,6 +244,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_12_152226) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
+  create_table "tool_executions", force: :cascade do |t|
+    t.bigint "agent_tool_id", null: false
+    t.bigint "conversation_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "duration_ms"
+    t.text "error"
+    t.integer "exit_code"
+    t.jsonb "input", default: {}
+    t.text "output"
+    t.boolean "timed_out", default: false
+    t.string "tool_use_id"
+    t.datetime "updated_at", null: false
+    t.bigint "workspace_id", null: false
+    t.index ["agent_tool_id"], name: "index_tool_executions_on_agent_tool_id"
+    t.index ["conversation_id"], name: "index_tool_executions_on_conversation_id"
+    t.index ["workspace_id"], name: "index_tool_executions_on_workspace_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email"
@@ -248,6 +285,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_12_152226) do
   add_foreign_key "agent_principals", "agents"
   add_foreign_key "agent_principals", "users"
   add_foreign_key "agent_principals", "workspaces"
+  add_foreign_key "agent_tools", "agents"
+  add_foreign_key "agent_tools", "workspaces"
   add_foreign_key "agents", "workspaces"
   add_foreign_key "conversation_states", "conversations"
   add_foreign_key "conversation_states", "users"
@@ -267,5 +306,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_12_152226) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "tool_executions", "agent_tools"
+  add_foreign_key "tool_executions", "conversations"
+  add_foreign_key "tool_executions", "workspaces"
   add_foreign_key "users", "workspaces"
 end

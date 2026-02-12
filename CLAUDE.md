@@ -97,10 +97,44 @@ Adapter contract:
 | AgentPrincipal | Join model: agent ↔ user with role, display_name, permissions |
 | ConversationState | Layer B: summary, pinned_facts, active_goals, summarized_through pointer |
 | MemoryItem | Layer D: extracted facts/decisions. Categories: decision, preference, fact, commitment |
+| AgentTool | Per-agent tool definition: name, description, input_schema (JSON Schema), command_template, encrypted credentials, timeout |
+| ToolExecution | Audit trail: records every tool call with input, output, exit_code, timing, timed_out flag |
+
+### Tool Use
+
+Agents can execute external scripts via Anthropic's tool use API. Tools are database records (per-agent), while skill instructions remain filesystem-based (Layer S).
+
+**How it works:**
+1. `Tools::DefinitionBuilder` reads `agent.enabled_tools` and returns Anthropic-compatible tool schemas
+2. `ProcessMessageJob` passes `tools:` to the API and loops on `stop_reason == "tool_use"`
+3. `Tools::Executor` runs commands via `Open3.capture3` with argv arrays (no shell — safe from injection)
+4. Tool results feed back to the LLM as `tool_result` messages; loop continues until `end_turn`
+5. Intermediate tool_use/tool_result rounds stay in memory only — only the final text reply is persisted
+6. Each execution is logged to `tool_executions` for audit/debugging
+7. Safety valve: max 10 tool rounds per message
+
+**Adding a tool to an agent:**
+```ruby
+AgentTool.create!(
+  workspace: Workspace.find_by(slug: "default"),
+  agent: Agent.find_by(name: "Jennifer"),
+  name: "find_availability",
+  description: "Find available meeting slots for given attendees",
+  input_schema: { "type" => "object", "properties" => { "attendees" => { "type" => "string" } }, "required" => ["attendees"] },
+  command_template: "python3 find-availability.py {attendees} --duration {duration}",
+  working_directory: "/srv/steward/skills/scheduling",
+  credentials: { "GOOGLE_API_KEY" => "..." },
+  timeout_seconds: 30
+)
+```
+
+- `credentials_json` is encrypted via Active Record Encryption (env vars injected at runtime)
+- `command_template` uses `{param}` placeholders substituted from LLM input
+- Agents without tools behave exactly as before (no `tools:` param sent)
 
 ### Jobs
 
-- **ProcessMessageJob**: Locks conversation → sends typing → assembles prompt → calls Anthropic → stores reply → sends via adapter. Single-writer per conversation.
+- **ProcessMessageJob**: Locks conversation → sends typing → assembles prompt → calls Anthropic with tool definitions → loops on tool_use responses (execute via Tools::Executor, feed results back) → stores final text reply → sends via adapter. Single-writer per conversation. Max 10 tool rounds.
 - **CompactConversationJob**: Rolling summarization when unsummarized messages exceed threshold (20). Runs after response is sent.
 - **ExtractMemoryJob**: Extracts structured facts (decision, preference, fact, commitment) from each user/assistant exchange into `MemoryItem` records. Runs on `:low_priority` queue after every reply. Uses `Memory::Extractor` with the agent's `extraction_model` (default: Haiku).
 
@@ -114,7 +148,7 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 
 ## Conventions
 
-- **No service objects.** Domain logic on models, POROs in `app/models/<namespace>/` for concepts (Prompt::Assembler, Compaction::Summarizer, Memory::Extractor, Adapters::Telegram, Skills::Registry).
+- **No service objects.** Domain logic on models, POROs in `app/models/<namespace>/` for concepts (Prompt::Assembler, Compaction::Summarizer, Memory::Extractor, Adapters::Telegram, Skills::Registry, Tools::Executor, Tools::DefinitionBuilder).
 - **Date/Time**: Always `Date.current` / `Time.current`.
 - **LLM client**: Use the `ANTHROPIC_CLIENT` constant (initialized in `config/initializers/anthropic.rb`). API: `ANTHROPIC_CLIENT.messages.create(model:, max_tokens:, system:, messages:)`. Response: `response.content.first.text`, `response.usage.output_tokens`.
 - **Token budgets**: Defined per agent in `agent.settings["token_budgets"]`. Defaults: agent_core=800, skills=2000, state=1500, history=4000, response=4000, principal_context=1200.
@@ -126,7 +160,7 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 - **Domain**: steward.boardwise.co
 - **Caddy** reverse proxies to localhost:3003
 - **Platform bot**: @AgentStewardBot (Steward agent, id=1)
-- **Credentials**: `bin/rails credentials:edit` — contains `telegram.bot_token` (fallback) and `anthropic.api_key`
+- **Credentials**: `bin/rails credentials:edit` — contains `telegram.bot_token` (fallback), `anthropic.api_key`, and `active_record_encryption` keys
 - **Database**: steward_development / steward_test on local Postgres
 - **Webhook URLs**: `https://steward.boardwise.co/webhooks/telegram/:agent_id`
 
@@ -134,15 +168,17 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 
 - Minitest with fixtures
 - `as_workspace(:default)` in setup to set Current.workspace
-- Fixtures: workspaces (default, other), users (alice, bob, eve), agents (steward, jennifer), agent_principals (jennifer_alice, jennifer_bob), conversations (alice_telegram, alice_jennifer, bob_jennifer), messages, memory_items
-- 75 tests covering models, adapters, prompt assembly, skills, principal context
+- Fixtures: workspaces (default, other), users (alice, bob, eve), agents (steward, jennifer), agent_principals (jennifer_alice, jennifer_bob), agent_tools (jennifer_scheduling, jennifer_moxie, jennifer_disabled), conversations (alice_telegram, alice_jennifer, bob_jennifer), messages, memory_items
+- 113 tests covering models, adapters, prompt assembly, skills, principal context, tool use, executor, definition builder
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `app/models/agent.rb` | Bot persona, model/token config, telegram_bot_token, principal helpers |
+| `app/models/agent.rb` | Bot persona, model/token config, telegram_bot_token, principal helpers, tool helpers |
+| `app/models/agent_tool.rb` | Per-agent tool definition with encrypted credentials, to_anthropic_tool |
 | `app/models/agent_principal.rb` | Agent ↔ User join model with role/display_name |
+| `app/models/tool_execution.rb` | Audit trail for tool calls (input, output, timing) |
 | `app/models/concerns/workspace_scoped.rb` | Tenant isolation concern |
 | `app/models/current.rb` | Current.workspace thread-local |
 | `app/models/prompt/assembler.rb` | Builds LLM messages array from memory layers (A, P, S, B, C) |
@@ -152,7 +188,9 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 | `app/models/adapters/telegram.rb` | Telegram normalization + typing + reply |
 | `app/models/adapters/base.rb` | Adapter interface |
 | `app/models/skills/registry.rb` | Loads SKILL.md files, singleton |
-| `app/jobs/process_message_job.rb` | Core message processing pipeline |
+| `app/models/tools/executor.rb` | Safe command execution via Open3.capture3 with argv arrays |
+| `app/models/tools/definition_builder.rb` | Builds Anthropic tool definitions from agent's enabled tools |
+| `app/jobs/process_message_job.rb` | Core message processing pipeline with tool use loop |
 | `app/jobs/compact_conversation_job.rb` | Triggers rolling summarization |
 | `app/jobs/extract_memory_job.rb` | Extracts memory items after each reply |
 | `app/controllers/webhooks_controller.rb` | Routes webhooks to agents by :agent_id |

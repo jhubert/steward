@@ -1,4 +1,6 @@
 module Adapters
+  class DeliveryError < StandardError; end
+
   class Base
     # Normalize raw input from a channel into a standard hash.
     # Returns: { workspace_id:, user_external_key:, user_external_value:,
@@ -8,6 +10,7 @@ module Adapters
     end
 
     # Send the assistant's reply back through the channel.
+    # Raises Adapters::DeliveryError on failure.
     def send_reply(conversation, message)
       raise NotImplementedError
     end

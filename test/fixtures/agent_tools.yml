@@ -1,0 +1,57 @@
+jennifer_scheduling:
+  workspace: default
+  agent: jennifer
+  name: find_availability
+  description: "Find available meeting slots for given attendees"
+  input_schema:
+    type: object
+    properties:
+      attendees:
+        type: string
+        description: "Comma-separated list of attendee emails"
+      duration:
+        type: integer
+        description: "Meeting duration in minutes"
+    required:
+      - attendees
+  command_template: "python3 find-availability.py {attendees} --duration {duration}"
+  working_directory: "/srv/steward/skills/scheduling"
+  timeout_seconds: 30
+  enabled: true
+  metadata: {}
+
+jennifer_moxie:
+  workspace: default
+  agent: jennifer
+  name: search_contacts
+  description: "Search for contacts in Moxie CRM"
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        description: "Search query for contact name or email"
+    required:
+      - query
+  command_template: "node moxie-search.js {query}"
+  working_directory: "/srv/steward/skills/moxie"
+  timeout_seconds: 15
+  enabled: true
+  metadata: {}
+
+jennifer_disabled:
+  workspace: default
+  agent: jennifer
+  name: send_invoice
+  description: "Send an invoice via Moxie"
+  input_schema:
+    type: object
+    properties:
+      client_id:
+        type: string
+    required:
+      - client_id
+  command_template: "node send-invoice.js {client_id}"
+  timeout_seconds: 30
+  enabled: false
+  metadata: {}
