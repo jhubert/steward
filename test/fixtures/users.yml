@@ -1,0 +1,20 @@
+alice:
+  workspace: default
+  name: Alice
+  email: alice@example.com
+  external_ids:
+    telegram_chat_id: "111111"
+
+bob:
+  workspace: default
+  name: Bob
+  email: bob@example.com
+  external_ids:
+    telegram_chat_id: "222222"
+
+eve:
+  workspace: other
+  name: Eve
+  email: eve@example.com
+  external_ids:
+    telegram_chat_id: "333333"

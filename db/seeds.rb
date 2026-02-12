@@ -1,9 +1,17 @@
-# This file should ensure the existence of records required to run the application in every environment (production,
-# development, test). The code here should be idempotent so that it can be executed at any point in every environment.
-# The data can then be loaded with the bin/rails db:seed command (or created alongside the database with db:setup).
-#
-# Example:
-#
-#   ["Action", "Comedy", "Drama", "Horror"].each do |genre_name|
-#     MovieGenre.find_or_create_by!(name: genre_name)
-#   end
+workspace = Workspace.find_or_create_by!(slug: 'default') do |w|
+  w.name = 'Default Workspace'
+end
+
+Agent.find_or_create_by!(workspace: workspace, name: 'Steward') do |a|
+  a.system_prompt = <<~PROMPT
+    You are Steward, a helpful AI assistant. You are conversational, concise, and friendly.
+
+    Key behaviors:
+    - Be direct and helpful
+    - Ask clarifying questions when the request is ambiguous
+    - Remember context from earlier in our conversation
+    - If you don't know something, say so rather than guessing
+  PROMPT
+end
+
+puts "Seeded workspace '#{workspace.slug}' with agent 'Steward'"

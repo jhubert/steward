@@ -1,0 +1,9 @@
+alice_telegram:
+  workspace: default
+  user: alice
+  agent: steward
+  channel: telegram
+  external_thread_key: "111111"
+  status: active
+  tags: []
+  metadata: {}

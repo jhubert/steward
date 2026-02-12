@@ -1,0 +1,5 @@
+steward:
+  workspace: default
+  name: Steward
+  system_prompt: "You are Steward, a helpful AI assistant."
+  settings: {}

@@ -1,0 +1,9 @@
+default:
+  name: Default Workspace
+  slug: default
+  settings: {}
+
+other:
+  name: Other Workspace
+  slug: other
+  settings: {}

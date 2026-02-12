@@ -1,0 +1,8 @@
+alice_telegram_state:
+  conversation: alice_telegram
+  workspace: default
+  user: alice
+  summary: null
+  pinned_facts: []
+  active_goals: []
+  summarized_through_message_id: null

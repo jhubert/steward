@@ -1,0 +1,15 @@
+alice_hello:
+  conversation: alice_telegram
+  workspace: default
+  user: alice
+  role: user
+  content: "Hello, Steward!"
+  metadata: {}
+
+steward_reply:
+  conversation: alice_telegram
+  workspace: default
+  user: alice
+  role: assistant
+  content: "Hello Alice! How can I help you today?"
+  metadata: {}
