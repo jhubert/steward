@@ -35,6 +35,20 @@ class WebhooksController < ActionController::API
       external_thread_key: normalized[:external_thread_key]
     )
 
+    # Deduplicate: Telegram may re-deliver the same message if the previous
+    # webhook response was slow. Skip if we've already stored this message.
+    telegram_message_id = normalized.dig(:metadata, "telegram_message_id")
+    if telegram_message_id
+      already_exists = conversation.messages
+                                   .where(role: 'user')
+                                   .where("metadata->>'telegram_message_id' = ?", telegram_message_id.to_s)
+                                   .exists?
+      if already_exists
+        head :ok
+        return
+      end
+    end
+
     # Append the incoming message
     message = conversation.messages.create!(
       workspace: workspace,
