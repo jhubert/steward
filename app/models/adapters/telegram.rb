@@ -26,6 +26,16 @@ module Adapters
       }
     end
 
+    def send_typing(conversation)
+      chat_id = conversation.external_thread_key
+      token = Rails.application.credentials.dig(:telegram, :bot_token)
+
+      HTTPX.post(
+        "#{API_BASE}/bot#{token}/sendChatAction",
+        json: { chat_id: chat_id, action: 'typing' }
+      )
+    end
+
     def send_reply(conversation, message)
       chat_id = conversation.external_thread_key
       token = Rails.application.credentials.dig(:telegram, :bot_token)

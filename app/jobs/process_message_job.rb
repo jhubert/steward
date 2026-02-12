@@ -19,6 +19,10 @@ class ProcessMessageJob < ApplicationJob
       # Append the new user message
       messages << { role: 'user', content: message.content }
 
+      # Show typing indicator
+      adapter = adapter_for(conversation.channel)
+      adapter.send_typing(conversation) if adapter.respond_to?(:send_typing)
+
       # Call the LLM
       started_at = Time.current
       response = ANTHROPIC_CLIENT.messages.create(
@@ -46,7 +50,6 @@ class ProcessMessageJob < ApplicationJob
       )
 
       # Send reply via the channel adapter
-      adapter = adapter_for(conversation.channel)
       adapter.send_reply(conversation, reply)
 
       # Check if compaction is needed
