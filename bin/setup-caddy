@@ -1,0 +1,17 @@
+#!/bin/bash
+set -e
+
+# Add Steward reverse proxy to Caddy
+if grep -q "steward.boardwise.co" /etc/caddy/Caddyfile; then
+  echo "steward.boardwise.co already in Caddyfile, skipping"
+else
+  echo '
+steward.boardwise.co {
+  reverse_proxy localhost:3003
+}' | sudo tee -a /etc/caddy/Caddyfile
+  echo "Added steward.boardwise.co to Caddyfile"
+fi
+
+# Reload Caddy
+sudo systemctl reload caddy
+echo "Caddy reloaded"

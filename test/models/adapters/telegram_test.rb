@@ -2,7 +2,7 @@ require 'test_helper'
 
 class Adapters::TelegramTest < ActiveSupport::TestCase
   setup do
-    @adapter = Adapters::Telegram.new
+    @adapter = Adapters::Telegram.new(bot_token: 'test-token')
   end
 
   test 'channel returns telegram' do

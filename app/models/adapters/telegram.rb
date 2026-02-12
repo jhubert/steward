@@ -2,6 +2,10 @@ module Adapters
   class Telegram < Base
     API_BASE = 'https://api.telegram.org'.freeze
 
+    def initialize(bot_token:)
+      @bot_token = bot_token
+    end
+
     def channel
       'telegram'
     end
@@ -28,20 +32,18 @@ module Adapters
 
     def send_typing(conversation)
       chat_id = conversation.external_thread_key
-      token = Rails.application.credentials.dig(:telegram, :bot_token)
 
       HTTPX.post(
-        "#{API_BASE}/bot#{token}/sendChatAction",
+        "#{API_BASE}/bot#{@bot_token}/sendChatAction",
         json: { chat_id: chat_id, action: 'typing' }
       )
     end
 
     def send_reply(conversation, message)
       chat_id = conversation.external_thread_key
-      token = Rails.application.credentials.dig(:telegram, :bot_token)
 
       response = HTTPX.post(
-        "#{API_BASE}/bot#{token}/sendMessage",
+        "#{API_BASE}/bot#{@bot_token}/sendMessage",
         json: {
           chat_id: chat_id,
           text: message.content,

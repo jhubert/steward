@@ -1,24 +1,23 @@
 class WebhooksController < ActionController::API
-  # POST /webhooks/telegram
+  # POST /webhooks/telegram/:agent_id
   def telegram
-    adapter = Adapters::Telegram.new
+    agent = Agent.unscoped.find_by(id: params[:agent_id])
+    unless agent
+      Rails.logger.error("[Webhook] Unknown agent_id: #{params[:agent_id]}")
+      head :ok
+      return
+    end
+
+    workspace = agent.workspace
+    Current.workspace = workspace
+
+    adapter = Adapters::Telegram.new(bot_token: agent.telegram_bot_token)
     normalized = adapter.normalize(params.to_unsafe_h)
 
     if normalized.nil? || normalized[:content].blank?
       head :ok
       return
     end
-
-    # Resolve workspace — for Phase 1, use a default workspace.
-    # In production, this would be determined by the bot token or routing config.
-    workspace = Workspace.find_by(slug: 'default')
-    unless workspace
-      Rails.logger.error('[Webhook] No default workspace found')
-      head :ok
-      return
-    end
-
-    Current.workspace = workspace
 
     # Find or create user by Telegram chat ID
     user = User.find_by_external(normalized[:user_external_key], normalized[:user_external_value])
@@ -28,14 +27,7 @@ class WebhooksController < ActionController::API
       external_ids: { normalized[:user_external_key] => normalized[:user_external_value] }
     )
 
-    # Find or create conversation
-    agent = workspace.agents.first
-    unless agent
-      Rails.logger.error("[Webhook] No agent configured for workspace #{workspace.slug}")
-      head :ok
-      return
-    end
-
+    # Find or create conversation for this user + agent
     conversation = Conversation.find_or_start(
       user: user,
       agent: agent,

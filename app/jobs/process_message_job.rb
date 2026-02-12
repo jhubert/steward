@@ -20,7 +20,7 @@ class ProcessMessageJob < ApplicationJob
       messages << { role: 'user', content: message.content }
 
       # Show typing indicator
-      adapter = adapter_for(conversation.channel)
+      adapter = adapter_for(conversation)
       adapter.send_typing(conversation) if adapter.respond_to?(:send_typing)
 
       # Call the LLM
@@ -59,10 +59,12 @@ class ProcessMessageJob < ApplicationJob
 
   private
 
-  def adapter_for(channel)
-    case channel
-    when 'telegram' then Adapters::Telegram.new
-    else raise "Unknown channel: #{channel}"
+  def adapter_for(conversation)
+    case conversation.channel
+    when 'telegram'
+      Adapters::Telegram.new(bot_token: conversation.agent.telegram_bot_token)
+    else
+      raise "Unknown channel: #{conversation.channel}"
     end
   end
 end
