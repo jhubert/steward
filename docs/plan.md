@@ -18,7 +18,7 @@ All data is scoped by: `workspace_id` → `user_id` → `thread_id` → `channel
 
 ## Phase 1 — Core Agent (COMPLETE)
 
-Single adapter (Telegram), multi-user, layered memory, skills loading.
+Multi-agent platform with Telegram, multi-user isolation, layered memory, and skills.
 
 ### What was built
 
@@ -29,11 +29,13 @@ Single adapter (Telegram), multi-user, layered memory, skills loading.
 - [x] Compaction::Summarizer — rolling summarization via LLM
 - [x] ProcessMessageJob — single-writer lock, LLM call, adapter reply
 - [x] CompactConversationJob — triggers when unsummarized messages > 20
-- [x] Adapters::Telegram — normalize, send_typing, send_reply
+- [x] Adapters::Telegram — normalize, send_typing, send_reply (per-agent bot tokens)
 - [x] Skills::Registry — loads SKILL.md files from filesystem
-- [x] WebhooksController — receives Telegram webhooks, auto-creates users
-- [x] Telegram webhook registered, bot live at @AgentStewardBot
+- [x] WebhooksController — routes webhooks to agents via `/webhooks/telegram/:agent_id`
+- [x] Multi-agent support — each agent has its own Telegram bot, token, and webhook URL
+- [x] Platform bot: @AgentStewardBot (Steward agent, the "reception desk")
 - [x] Caddy reverse proxy: steward.boardwise.co → localhost:3003
+- [x] Per-agent rake tasks: `telegram:set_webhook[AgentName]`, `telegram:set_all_webhooks`
 - [x] 32 tests passing
 - [x] Typing indicator in Telegram
 
@@ -172,56 +174,60 @@ After each assistant reply, extract structured facts into `memory_items`:
 - **Multi-turn tool chains**: "Remind me tomorrow" → store → trigger → resume. Needs a lightweight scheduler.
 - **Webhook adapter**: Generic webhook input for custom integrations.
 - **Slack/WhatsApp adapters**: Same pattern as Telegram.
-- **Multiple agents per workspace**: Different personas for different purposes.
 - **Conversation branching**: `/new` and `/topic` commands in Telegram to start new threads within the same chat.
+- **Agent discovery**: Steward bot helps users find and connect with available agents.
 
 ---
 
 ## Architecture Diagram
 
 ```
-                    ┌─────────────────┐
-                    │  Telegram API    │
-                    └────────┬────────┘
-                             │ webhook POST
-                    ┌────────▼────────┐
-                    │ WebhooksController│
-                    └────────┬────────┘
-                             │ normalize
-                    ┌────────▼────────┐
-                    │ Adapters::       │
-                    │ Telegram         │
-                    └────────┬────────┘
-                             │ find/create user, conversation, message
-                             │ enqueue
-                    ┌────────▼────────┐
-                    │ProcessMessageJob │
-                    │                  │
-                    │ 1. Lock convo    │
-                    │ 2. Send typing   │
-                    │ 3. Assemble prompt│
-                    │ 4. Call LLM      │
-                    │ 5. Store reply   │
-                    │ 6. Send reply    │
-                    │ 7. Maybe compact │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              │              │              │
-     ┌────────▼───┐  ┌──────▼──────┐ ┌────▼──────┐
-     │  Prompt::   │  │ Anthropic   │ │ Compaction│
-     │  Assembler  │  │ Claude API  │ │ Summarizer│
-     │             │  │             │ │           │
-     │ Layer A: Core│  └─────────────┘ └───────────┘
-     │ Layer S: Skills│
-     │ Layer B: State │
-     │ Layer C: History│
-     │ Layer D: Recall │ (Phase 2)
-     └────────────────┘
+  @StewardBot        @LawyerBot        @FriendBot
+       │                  │                 │
+       │ webhook          │ webhook         │ webhook
+       ▼                  ▼                 ▼
+  /webhooks/         /webhooks/        /webhooks/
+  telegram/1         telegram/2        telegram/3
+       │                  │                 │
+       └──────────────────┼─────────────────┘
+                          │
+                 ┌────────▼────────┐
+                 │WebhooksController│
+                 │                  │
+                 │ Resolve agent    │
+                 │ by :agent_id     │
+                 └────────┬────────┘
+                          │ normalize, find/create user + conversation
+                          │ enqueue
+                 ┌────────▼────────┐
+                 │ProcessMessageJob │
+                 │                  │
+                 │ 1. Lock convo    │
+                 │ 2. Send typing   │
+                 │ 3. Assemble prompt│
+                 │ 4. Call LLM      │
+                 │ 5. Store reply   │
+                 │ 6. Send reply    │
+                 │ 7. Maybe compact │
+                 └────────┬────────┘
+                          │
+           ┌──────────────┼──────────────┐
+           │              │              │
+  ┌────────▼───┐  ┌──────▼──────┐ ┌────▼──────┐
+  │  Prompt::   │  │ Anthropic   │ │ Compaction│
+  │  Assembler  │  │ Claude API  │ │ Summarizer│
+  │             │  │             │ │           │
+  │ Layer A: Core│  └─────────────┘ └───────────┘
+  │ Layer S: Skills│
+  │ Layer B: State │
+  │ Layer C: History│
+  │ Layer D: Recall │ (Phase 2)
+  └────────────────┘
 
 Storage: PostgreSQL (all tables workspace-scoped)
 Jobs: Solid Queue
 Skills: Filesystem (skills/*.md)
+Each agent = its own Telegram bot, token, and webhook URL
 ```
 
 ---
