@@ -264,6 +264,96 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_not_includes captured_env.keys, 'XDG_CONFIG_HOME'
   end
 
+  test 'google_setup check action reports unconfigured for user without credentials' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'google_setup',
+      tool_id: 'toolu_gs_check',
+      input: { 'action' => 'check' }
+    )
+    text_response = build_text_response('Google is not configured yet.')
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    reply = Message.last
+    assert_equal 'Google is not configured yet.', reply.content
+  end
+
+  test 'google_setup check action reports configured when credentials exist' do
+    principal = agent_principals(:jennifer_alice)
+    principal.credentials = { "gog_keyring_password" => "secret" }
+    principal.save!
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'google_setup',
+      tool_id: 'toolu_gs_check2',
+      input: { 'action' => 'check' }
+    )
+    text_response = build_text_response('Google is configured!')
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    reply = Message.last
+    assert_equal 'Google is configured!', reply.content
+  end
+
+  test 'google_setup generate_link action returns a signed URL' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'google_setup',
+      tool_id: 'toolu_gs_link',
+      input: { 'action' => 'generate_link' }
+    )
+    text_response = build_text_response('Here is your setup link.')
+
+    messages_api = stub
+    # Capture the tool result to verify it contains a URL
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    # The tool result should contain a setup URL
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match %r{setup/google/}, tool_content[:content]
+  end
+
+  test 'google_setup returns error for non-principal user' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'google_setup',
+      tool_id: 'toolu_gs_noprincipal',
+      input: { 'action' => 'check' }
+    )
+    text_response = build_text_response('Sorry, you need to be a principal.')
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    # alice_telegram is on the steward agent (no principals)
+    ProcessMessageJob.perform_now(@message.id)
+
+    reply = Message.last
+    assert_equal 'Sorry, you need to be a principal.', reply.content
+  end
+
   test 'agents without agent-specific tools still get builtin tools' do
     stub_text_response('Hi there!')
 

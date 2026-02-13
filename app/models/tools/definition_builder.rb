@@ -19,6 +19,29 @@ module Tools
           "type" => "object",
           "properties" => {}
         }
+      },
+      {
+        name: "google_setup",
+        description: "Manage Google account setup for the current user. Use 'check' to see if Google is configured, 'start' to begin OAuth flow, 'complete' to finish it, or 'generate_link' to create a web setup URL.",
+        input_schema: {
+          "type" => "object",
+          "properties" => {
+            "action" => {
+              "type" => "string",
+              "enum" => ["check", "start", "complete", "generate_link"],
+              "description" => "The setup action to perform"
+            },
+            "email" => {
+              "type" => "string",
+              "description" => "Google email address (required for start and complete)"
+            },
+            "auth_url" => {
+              "type" => "string",
+              "description" => "The redirect URL containing the auth code (required for complete)"
+            }
+          },
+          "required" => ["action"]
+        }
       }
     ].freeze
 

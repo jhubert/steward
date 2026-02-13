@@ -181,7 +181,7 @@ class ProcessMessageJob < ApplicationJob
   end
 
   def execute_tool(tool_use_block, agent, conversation)
-    input = tool_use_block.input.is_a?(Hash) ? tool_use_block.input : {}
+    input = tool_use_block.input.is_a?(Hash) ? tool_use_block.input.transform_keys(&:to_s) : {}
 
     # Handle virtual (built-in) tools
     virtual_result = execute_virtual_tool(tool_use_block.name, input, conversation)
@@ -240,20 +240,75 @@ class ProcessMessageJob < ApplicationJob
       new_scratchpad += "\n" if new_scratchpad.present?
       new_scratchpad += "[#{Time.current.strftime('%Y-%m-%d %H:%M')}] #{note}"
       state.update!(scratchpad: new_scratchpad.last(10_000))
-      {
-        content: "Note saved to scratchpad.",
-        summary: { name: "save_note" },
-        log_entry: { "tool" => "save_note", "input" => note.truncate(200), "output" => "saved" }
-      }
+      virtual_result("save_note", "Note saved to scratchpad.", input: note.truncate(200))
     when "read_notes"
       state = conversation.ensure_state!
       content = state.scratchpad.present? ? state.scratchpad : "(Scratchpad is empty)"
-      {
-        content: content,
-        summary: { name: "read_notes" },
-        log_entry: { "tool" => "read_notes", "output" => content.truncate(200) }
-      }
+      virtual_result("read_notes", content)
+    when "google_setup"
+      execute_google_setup(input, conversation)
     end
+  end
+
+  def execute_google_setup(input, conversation)
+    action = input["action"].to_s
+    agent = conversation.agent
+    principal = agent.agent_principals.find_by(user: conversation.user)
+
+    unless principal
+      return virtual_result("google_setup", "Error: This user is not a principal of this agent. Google setup requires principal access.")
+    end
+
+    authenticator = Gog::Authenticator.new(agent_principal: principal)
+
+    case action
+    when "check"
+      if authenticator.configured?
+        virtual_result("google_setup", "Google account is configured for this user. Keyring credentials are present.")
+      else
+        virtual_result("google_setup", "Google account is NOT configured for this user. Use the 'start' action to begin setup, or 'generate_link' to send a web setup URL.")
+      end
+    when "start"
+      email = input["email"].to_s.strip
+      if email.blank?
+        return virtual_result("google_setup", "Error: 'email' parameter is required for the 'start' action.")
+      end
+
+      result = authenticator.start_auth(email)
+      if result.success
+        virtual_result("google_setup", "Auth step 1 complete. Send the user this URL to authorize:\n\n#{result.output}\n\nInstructions: Open this URL, sign in with Google, grant access, then copy the full URL from the browser address bar after the redirect (it will start with http://localhost:1/) and paste it back here.", input: email)
+      else
+        virtual_result("google_setup", "Error starting auth: #{result.error}", input: email)
+      end
+    when "complete"
+      email = input["email"].to_s.strip
+      auth_url = input["auth_url"].to_s.strip
+      if email.blank? || auth_url.blank?
+        return virtual_result("google_setup", "Error: Both 'email' and 'auth_url' parameters are required for the 'complete' action.")
+      end
+
+      result = authenticator.complete_auth(email, auth_url)
+      if result.success
+        virtual_result("google_setup", "Google account successfully connected for #{email}! The user can now use Google Workspace features.", input: email)
+      else
+        virtual_result("google_setup", "Error completing auth: #{result.error}", input: email)
+      end
+    when "generate_link"
+      token = Gog::SetupToken.generate(user: conversation.user, agent: agent, workspace: conversation.workspace)
+      url = "https://steward.boardwise.co/setup/google/#{token}"
+      virtual_result("google_setup", "Web setup URL (valid for 1 hour):\n#{url}\n\nSend this link to the user. They can complete Google account setup through the web interface.")
+    else
+      virtual_result("google_setup", "Error: Unknown action '#{action}'. Valid actions: check, start, complete, generate_link.")
+    end
+  end
+
+  def virtual_result(tool_name, content, input: nil)
+    log_input = input ? { "input" => input.to_s.truncate(200) } : {}
+    {
+      content: content,
+      summary: { name: tool_name },
+      log_entry: { "tool" => tool_name, "output" => content.to_s.truncate(500) }.merge(log_input)
+    }
   end
 
   def build_principal_env(agent, conversation)

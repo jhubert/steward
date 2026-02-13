@@ -20,13 +20,14 @@ class Tools::DefinitionBuilderTest < ActiveSupport::TestCase
     definitions = builder.call
 
     assert_kind_of Array, definitions
-    assert_equal 4, definitions.length
+    assert_equal 5, definitions.length
 
     names = definitions.map { |d| d[:name] }
     assert_includes names, 'find_availability'
     assert_includes names, 'search_contacts'
     assert_includes names, 'save_note'
     assert_includes names, 'read_notes'
+    assert_includes names, 'google_setup'
     # Disabled tool should not appear
     assert_not_includes names, 'send_invoice'
   end

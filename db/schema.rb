@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_13_065006) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_13_154332) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -93,7 +93,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_13_065006) do
     t.bigint "workspace_id", null: false
     t.index ["agent_id"], name: "index_conversations_on_agent_id"
     t.index ["user_id"], name: "index_conversations_on_user_id"
-    t.index ["workspace_id", "user_id", "channel", "external_thread_key"], name: "idx_conversations_lookup", unique: true, where: "(external_thread_key IS NOT NULL)"
+    t.index ["workspace_id", "user_id", "agent_id", "channel", "external_thread_key"], name: "idx_conversations_lookup", unique: true
     t.index ["workspace_id"], name: "index_conversations_on_workspace_id"
   end
 
