@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_13_033532) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_13_041406) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -64,6 +64,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_13_033532) do
     t.jsonb "active_goals", default: []
     t.bigint "conversation_id", null: false
     t.datetime "created_at", null: false
+    t.bigint "extracted_through_message_id"
     t.jsonb "pinned_facts", default: []
     t.text "scratchpad", default: ""
     t.bigint "summarized_through_message_id"

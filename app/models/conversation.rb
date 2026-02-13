@@ -12,6 +12,7 @@ class Conversation < ApplicationRecord
   scope :active, -> { where(status: 'active') }
 
   COMPACTION_THRESHOLD = 20
+  EXTRACTION_THRESHOLD = 10
 
   def ensure_state!
     state || create_state!(workspace: workspace, user: user)
@@ -20,6 +21,11 @@ class Conversation < ApplicationRecord
   def needs_compaction?
     last_summarized = state&.summarized_through_message_id || 0
     messages.where('id > ?', last_summarized).count >= COMPACTION_THRESHOLD
+  end
+
+  def needs_extraction?
+    last_extracted = state&.extracted_through_message_id || 0
+    messages.where('id > ?', last_extracted).count >= EXTRACTION_THRESHOLD
   end
 
   # Find or create a conversation for a given channel and external key.

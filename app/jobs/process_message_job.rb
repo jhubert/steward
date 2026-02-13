@@ -45,7 +45,7 @@ class ProcessMessageJob < ApplicationJob
 
     # Post-delivery jobs (best-effort, failures here don't affect the user)
     CompactConversationJob.perform_later(conversation.id) if conversation.needs_compaction?
-    ExtractMemoryJob.perform_later(conversation.id, message.id, reply.id)
+    ExtractMemoryJob.perform_later(conversation.id) if conversation.needs_extraction?
     GenerateTitleJob.perform_later(conversation.id) if conversation.title.blank?
   end
 

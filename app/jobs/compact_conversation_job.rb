@@ -21,5 +21,7 @@ class CompactConversationJob < ApplicationJob
     Rails.logger.info(
       "[Compaction] Conversation #{conversation.id}: summarized through message #{unsummarized.last.id}"
     )
+
+    ExtractMemoryJob.perform_later(conversation_id) if conversation.needs_extraction?
   end
 end

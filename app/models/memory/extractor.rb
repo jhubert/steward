@@ -3,19 +3,23 @@ module Memory
     VALID_CATEGORIES = %w[decision preference fact commitment].freeze
 
     PROMPT = <<~PROMPT
-      You extract structured facts from a conversation exchange. For each meaningful fact, return a JSON array of objects with "category" and "content" keys.
+      You extract durable facts from a conversation segment that would be useful
+      in FUTURE conversations with this user. Return a JSON array of objects
+      with "category" and "content" keys.
 
       Categories:
-      - decision: A choice or decision the user has made
-      - preference: A stated preference, like, or dislike
-      - fact: A factual detail about the user (name, location, job, etc.)
-      - commitment: Something the user or assistant committed to doing
+      - decision: A choice the user made (e.g., "chose Rails over Django")
+      - preference: A stated preference or dislike (e.g., "prefers morning meetings")
+      - fact: A factual detail about the user (e.g., "based in Toronto", "works at Acme Corp")
+      - commitment: Something committed to for the future
 
       Rules:
-      - Only extract NEW information — skip anything already in the known facts below
-      - Skip greetings, filler, and small talk with no factual content
-      - Each content string should be a concise, standalone statement
-      - Return an empty array [] if there is nothing worth extracting
+      - Only extract information useful in a DIFFERENT conversation days or weeks later
+      - DO NOT extract: observations about tone/mood, transient debugging state,
+        tool availability, meta-commentary about the conversation itself
+      - Only extract NEW information — skip anything in the known facts below
+      - Write each item as a concise standalone statement in third person
+      - Prefer extracting nothing over extracting noise. Return [] if nothing is durable.
       - Return ONLY the JSON array, no other text
     PROMPT
 
@@ -23,12 +27,12 @@ module Memory
       @agent = agent
     end
 
-    def call(user_message:, assistant_reply:, context: [])
-      content = build_prompt(user_message, assistant_reply, context)
+    def call(messages:, context: [])
+      content = build_prompt(messages, context)
 
       response = Rails.configuration.anthropic_client.messages.create(
         model: @agent.extraction_model,
-        max_tokens: 1000,
+        max_tokens: 2000,
         system: PROMPT,
         messages: [{ role: 'user', content: content }]
       )
@@ -54,7 +58,7 @@ module Memory
       []
     end
 
-    def build_prompt(user_message, assistant_reply, context)
+    def build_prompt(messages, context)
       parts = []
 
       if context.any?
@@ -62,9 +66,9 @@ module Memory
         parts << "## Already Known Facts\n#{known}"
       end
 
-      parts << "## User Message\n#{user_message}"
-      parts << "## Assistant Reply\n#{assistant_reply}"
-      parts << "## Task\nExtract new facts as a JSON array. Return [] if nothing new."
+      transcript = messages.map { |m| "#{m.role.upcase}: #{m.content}" }.join("\n")
+      parts << "## Conversation Segment\n#{transcript}"
+      parts << "## Task\nExtract durable facts as a JSON array. Return [] if nothing is worth remembering."
 
       parts.join("\n\n")
     end

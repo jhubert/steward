@@ -4,15 +4,13 @@ class ExtractMemoryJobTest < ActiveSupport::TestCase
   setup do
     as_workspace(:default)
     @conversation = conversations(:alice_telegram)
-    @user_message = messages(:alice_hello)
-    @assistant_message = messages(:steward_reply)
   end
 
-  test 'creates memory items from extracted facts' do
+  test 'extracts memory items from unextracted messages' do
     stub_llm_response('[{"category": "fact", "content": "User name is Alice"}]')
 
     assert_difference 'MemoryItem.count', 1 do
-      ExtractMemoryJob.perform_now(@conversation.id, @user_message.id, @assistant_message.id)
+      ExtractMemoryJob.perform_now(@conversation.id)
     end
 
     item = MemoryItem.last
@@ -20,29 +18,56 @@ class ExtractMemoryJobTest < ActiveSupport::TestCase
     assert_equal 'User name is Alice', item.content
     assert_equal users(:alice), item.user
     assert_equal @conversation, item.conversation
-    assert_equal @user_message.id, item.metadata['source_user_message_id']
-    assert_equal @assistant_message.id, item.metadata['source_assistant_message_id']
+    assert_kind_of Array, item.metadata['source_message_range']
+    assert_equal 2, item.metadata['source_message_range'].size
   end
 
-  test 'creates nothing when extraction returns empty array' do
+  test 'advances extraction pointer after processing' do
+    stub_llm_response('[{"category": "fact", "content": "User name is Alice"}]')
+
+    ExtractMemoryJob.perform_now(@conversation.id)
+
+    state = @conversation.state.reload
+    assert_equal messages(:steward_reply).id, state.extracted_through_message_id
+  end
+
+  test 'advances pointer even when nothing extracted' do
     stub_llm_response('[]')
 
     assert_no_difference 'MemoryItem.count' do
-      ExtractMemoryJob.perform_now(@conversation.id, @user_message.id, @assistant_message.id)
+      ExtractMemoryJob.perform_now(@conversation.id)
     end
+
+    state = @conversation.state.reload
+    assert_equal messages(:steward_reply).id, state.extracted_through_message_id
+  end
+
+  test 'skips when no unextracted messages exist' do
+    state = @conversation.ensure_state!
+    # Use maximum ID since fixture IDs are hash-based, not sequential
+    state.advance_extraction!(@conversation.messages.maximum(:id))
+
+    # Should not call the LLM at all
+    Rails.configuration.anthropic_client.expects(:messages).never
+
+    ExtractMemoryJob.perform_now(@conversation.id)
   end
 
   test 'creates nothing when LLM returns malformed JSON' do
     stub_llm_response('not json at all')
 
     assert_no_difference 'MemoryItem.count' do
-      ExtractMemoryJob.perform_now(@conversation.id, @user_message.id, @assistant_message.id)
+      ExtractMemoryJob.perform_now(@conversation.id)
     end
+
+    # Pointer still advances
+    state = @conversation.state.reload
+    assert_equal messages(:steward_reply).id, state.extracted_through_message_id
   end
 
   test 'discards job when conversation not found' do
     assert_nothing_raised do
-      ExtractMemoryJob.perform_now(0, @user_message.id, @assistant_message.id)
+      ExtractMemoryJob.perform_now(0)
     end
   end
 
@@ -51,7 +76,7 @@ class ExtractMemoryJobTest < ActiveSupport::TestCase
     stub_llm_response(json)
 
     assert_difference 'MemoryItem.count', 2 do
-      ExtractMemoryJob.perform_now(@conversation.id, @user_message.id, @assistant_message.id)
+      ExtractMemoryJob.perform_now(@conversation.id)
     end
   end
 

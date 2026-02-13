@@ -8,6 +8,14 @@ class ConversationState < ApplicationRecord
     conversation.messages.unsummarized_since(summarized_through_message_id)
   end
 
+  def unextracted_messages
+    conversation.messages.unsummarized_since(extracted_through_message_id)
+  end
+
+  def advance_extraction!(through_message_id)
+    update!(extracted_through_message_id: through_message_id)
+  end
+
   def advance_summary!(new_summary, through_message_id)
     update!(
       summary: new_summary,

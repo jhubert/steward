@@ -3,24 +3,19 @@ class ExtractMemoryJob < ApplicationJob
 
   discard_on ActiveRecord::RecordNotFound
 
-  def perform(conversation_id, user_message_id, assistant_message_id)
+  def perform(conversation_id)
     conversation = Conversation.find(conversation_id)
     Current.workspace = conversation.workspace
 
-    user_message = conversation.messages.find(user_message_id)
-    assistant_message = conversation.messages.find(assistant_message_id)
+    state = conversation.ensure_state!
+    unextracted = state.unextracted_messages.limit(50)
+    return if unextracted.empty?
 
-    # Load recent memory items for dedup context
     context = dedup_context(conversation)
-
     extractor = Memory::Extractor.new(agent: conversation.agent)
-    items = extractor.call(
-      user_message: user_message.content,
-      assistant_reply: assistant_message.content,
-      context: context
-    )
+    items = extractor.call(messages: unextracted, context: context)
 
-    return if items.empty?
+    last_message = unextracted.last
 
     items.each do |item|
       record = MemoryItem.create!(
@@ -29,16 +24,16 @@ class ExtractMemoryJob < ApplicationJob
         conversation: conversation,
         category: item[:category],
         content: item[:content],
-        metadata: {
-          source_user_message_id: user_message_id,
-          source_assistant_message_id: assistant_message_id
-        }
+        metadata: { source_message_range: [unextracted.first.id, last_message.id] }
       )
       GenerateEmbeddingJob.perform_later(record.id)
     end
 
+    # Always advance pointer — even if nothing extracted — to avoid re-processing
+    state.advance_extraction!(last_message.id)
+
     Rails.logger.info(
-      "[Memory] Conversation #{conversation.id}: extracted #{items.size} items"
+      "[Memory] Conversation #{conversation.id}: extracted #{items.size} items from #{unextracted.size} messages"
     )
   end
 

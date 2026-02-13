@@ -31,4 +31,29 @@ class ConversationStateTest < ActiveSupport::TestCase
       assert msg.id > known_last.id, 'unsummarized message should be newer than summarized_through'
     end
   end
+
+  test 'unextracted_messages returns all when nothing extracted' do
+    messages = @state.unextracted_messages
+    assert_equal 2, messages.count
+  end
+
+  test 'unextracted_messages filters after advance_extraction!' do
+    last_message = messages(:steward_reply)
+    @state.advance_extraction!(last_message.id)
+
+    @state.reload
+    assert_equal last_message.id, @state.extracted_through_message_id
+
+    @state.unextracted_messages.each do |msg|
+      assert msg.id > last_message.id, 'unextracted message should be newer than extracted_through'
+    end
+  end
+
+  test 'advance_extraction! updates pointer' do
+    last_message = messages(:steward_reply)
+    @state.advance_extraction!(last_message.id)
+
+    @state.reload
+    assert_equal last_message.id, @state.extracted_through_message_id
+  end
 end

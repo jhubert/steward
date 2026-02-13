@@ -79,26 +79,46 @@ class Memory::ExtractorTest < ActiveSupport::TestCase
 
   # build_prompt tests
 
-  test 'build_prompt includes user message and assistant reply' do
-    prompt = @extractor.build_prompt('I live in Toronto', 'That is great!', [])
+  test 'build_prompt formats messages as transcript' do
+    msgs = [
+      Message.new(role: 'user', content: 'I live in Toronto'),
+      Message.new(role: 'assistant', content: 'That is great!')
+    ]
+    prompt = @extractor.build_prompt(msgs, [])
 
-    assert_includes prompt, '## User Message'
-    assert_includes prompt, 'I live in Toronto'
-    assert_includes prompt, '## Assistant Reply'
-    assert_includes prompt, 'That is great!'
+    assert_includes prompt, '## Conversation Segment'
+    assert_includes prompt, 'USER: I live in Toronto'
+    assert_includes prompt, 'ASSISTANT: That is great!'
   end
 
   test 'build_prompt includes context when provided' do
     context_item = MemoryItem.new(category: 'fact', content: 'Works at Acme Corp')
-    prompt = @extractor.build_prompt('I got promoted', 'Congratulations!', [context_item])
+    msgs = [
+      Message.new(role: 'user', content: 'I got promoted'),
+      Message.new(role: 'assistant', content: 'Congratulations!')
+    ]
+    prompt = @extractor.build_prompt(msgs, [context_item])
 
     assert_includes prompt, '## Already Known Facts'
     assert_includes prompt, '[fact] Works at Acme Corp'
   end
 
   test 'build_prompt omits known facts section when context is empty' do
-    prompt = @extractor.build_prompt('Hello', 'Hi there!', [])
+    msgs = [Message.new(role: 'user', content: 'Hello')]
+    prompt = @extractor.build_prompt(msgs, [])
 
     assert_not_includes prompt, '## Already Known Facts'
+  end
+
+  test 'build_prompt handles multiple messages' do
+    msgs = [
+      Message.new(role: 'user', content: 'Hello'),
+      Message.new(role: 'assistant', content: 'Hi there!'),
+      Message.new(role: 'user', content: 'I work at Acme'),
+      Message.new(role: 'assistant', content: 'Nice!')
+    ]
+    prompt = @extractor.build_prompt(msgs, [])
+
+    assert_includes prompt, "USER: Hello\nASSISTANT: Hi there!\nUSER: I work at Acme\nASSISTANT: Nice!"
   end
 end

@@ -46,4 +46,45 @@ class ConversationTest < ActiveSupport::TestCase
     conv = conversations(:alice_telegram)
     assert_not conv.needs_compaction?
   end
+
+  test 'needs_extraction? returns false when under threshold' do
+    conv = conversations(:alice_telegram)
+    assert_not conv.needs_extraction?
+  end
+
+  test 'needs_extraction? returns true when at threshold' do
+    conv = conversations(:alice_telegram)
+    # Add messages to reach extraction threshold (already has 2 from fixtures)
+    (Conversation::EXTRACTION_THRESHOLD - 2).times do |i|
+      conv.messages.create!(
+        workspace: conv.workspace,
+        user: conv.user,
+        role: i.even? ? 'user' : 'assistant',
+        content: "Message #{i}"
+      )
+    end
+
+    assert conv.needs_extraction?
+  end
+
+  test 'needs_extraction? respects extracted_through pointer' do
+    conv = conversations(:alice_telegram)
+    state = conv.ensure_state!
+
+    # Add messages to reach threshold
+    (Conversation::EXTRACTION_THRESHOLD - 2).times do |i|
+      conv.messages.create!(
+        workspace: conv.workspace,
+        user: conv.user,
+        role: i.even? ? 'user' : 'assistant',
+        content: "Message #{i}"
+      )
+    end
+
+    assert conv.needs_extraction?
+
+    # Advance pointer past all messages
+    state.advance_extraction!(conv.messages.last.id)
+    assert_not conv.needs_extraction?
+  end
 end
