@@ -209,6 +209,61 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_equal 'Hello!', reply.content
   end
 
+  test 'tool execution injects per-user gog env when principal has credentials' do
+    principal = agent_principals(:jennifer_alice)
+    principal.credentials = { "gog_keyring_password" => "secret_pw" }
+    principal.save!
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'find_availability',
+      tool_id: 'toolu_gog',
+      input: { 'attendees' => 'alice@example.com' }
+    )
+    text_response = build_text_response('Done')
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    user_id = conversations(:alice_jennifer).user.id
+    expected_gog_dir = Rails.root.join("data", "gog", user_id.to_s).to_s
+
+    captured_env = nil
+    status = stub(exitstatus: 0)
+    Open3.stubs(:capture3).with { |*args| captured_env = args.first; true }.returns(['ok', '', status])
+
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert_equal expected_gog_dir, captured_env['XDG_CONFIG_HOME']
+    assert_equal 'secret_pw', captured_env['GOG_KEYRING_PASSWORD']
+    assert_equal 'file', captured_env['GOG_KEYRING_BACKEND']
+  end
+
+  test 'tool execution does not inject gog env when principal has no credentials' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'find_availability',
+      tool_id: 'toolu_no_gog',
+      input: { 'attendees' => 'alice@example.com' }
+    )
+    text_response = build_text_response('Done')
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    captured_env = nil
+    status = stub(exitstatus: 0)
+    Open3.stubs(:capture3).with { |*args| captured_env = args.first; true }.returns(['ok', '', status])
+
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert_not_includes captured_env.keys, 'GOG_KEYRING_PASSWORD'
+    assert_not_includes captured_env.keys, 'XDG_CONFIG_HOME'
+  end
+
   test 'agents without agent-specific tools still get builtin tools' do
     stub_text_response('Hi there!')
 

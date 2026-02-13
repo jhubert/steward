@@ -42,4 +42,39 @@ class AgentPrincipalTest < ActiveSupport::TestCase
     ap.role = nil
     assert_equal 'Alice', ap.roster_entry
   end
+
+  test 'credentials returns empty hash when credentials_json is blank' do
+    ap = agent_principals(:jennifer_alice)
+    assert_equal({}, ap.credentials)
+  end
+
+  test 'credentials round-trips through setter and getter' do
+    ap = agent_principals(:jennifer_alice)
+    ap.credentials = { "gog_keyring_password" => "secret123" }
+    ap.save!
+    ap.reload
+    assert_equal({ "gog_keyring_password" => "secret123" }, ap.credentials)
+  end
+
+  test 'credentials setter clears with nil' do
+    ap = agent_principals(:jennifer_alice)
+    ap.credentials = { "key" => "val" }
+    ap.save!
+    ap.credentials = nil
+    ap.save!
+    ap.reload
+    assert_equal({}, ap.credentials)
+  end
+
+  test 'credentials_json is encrypted' do
+    ap = agent_principals(:jennifer_alice)
+    ap.credentials = { "gog_keyring_password" => "secret123" }
+    ap.save!
+
+    raw = ActiveRecord::Base.connection.select_value(
+      "SELECT credentials_json FROM agent_principals WHERE id = #{ap.id}"
+    )
+    assert_not_nil raw
+    assert_not_equal ap.credentials.to_json, raw
+  end
 end

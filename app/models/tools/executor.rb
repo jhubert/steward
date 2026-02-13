@@ -12,9 +12,9 @@ module Tools
       @tool = agent_tool
     end
 
-    def call(input)
+    def call(input, extra_env: {})
       argv = build_argv(input)
-      env = build_env
+      env = build_env.merge(extra_env)
       dir = resolve_working_directory
 
       started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)

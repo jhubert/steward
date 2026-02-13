@@ -198,8 +198,9 @@ class ProcessMessageJob < ApplicationJob
     end
 
     executor = Tools::Executor.new(agent_tool: agent_tool)
+    extra_env = build_principal_env(agent, conversation)
     started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    result = executor.call(input)
+    result = executor.call(input, extra_env: extra_env)
     duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round
 
     ToolExecution.create!(
@@ -253,6 +254,18 @@ class ProcessMessageJob < ApplicationJob
         log_entry: { "tool" => "read_notes", "output" => content.truncate(200) }
       }
     end
+  end
+
+  def build_principal_env(agent, conversation)
+    principal = agent.agent_principals.find_by(user: conversation.user)
+    return {} unless principal&.credentials&.key?("gog_keyring_password")
+
+    user_gog_dir = Rails.root.join("data", "gog", conversation.user.id.to_s).to_s
+    {
+      "XDG_CONFIG_HOME" => user_gog_dir,
+      "GOG_KEYRING_PASSWORD" => principal.credentials["gog_keyring_password"],
+      "GOG_KEYRING_BACKEND" => "file"
+    }
   end
 
   def extract_text(content_blocks)

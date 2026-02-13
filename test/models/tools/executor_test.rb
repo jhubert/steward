@@ -110,4 +110,38 @@ class Tools::ExecutorTest < ActiveSupport::TestCase
     result = executor.call({})
     assert_equal 0, result.exit_code
   end
+
+  test 'call merges extra_env into environment' do
+    @tool.command_template = 'env'
+    @tool.credentials = { 'TOOL_KEY' => 'from_tool' }
+    @tool.working_directory = nil
+    executor = Tools::Executor.new(agent_tool: @tool)
+
+    status = stub(exitstatus: 0)
+    Open3.expects(:capture3).with(
+      { 'TOOL_KEY' => 'from_tool', 'XDG_CONFIG_HOME' => '/tmp/gog/1', 'GOG_KEYRING_PASSWORD' => 'pw123' },
+      'env',
+      chdir: Rails.root.to_s
+    ).returns(['output', '', status])
+
+    result = executor.call({}, extra_env: { 'XDG_CONFIG_HOME' => '/tmp/gog/1', 'GOG_KEYRING_PASSWORD' => 'pw123' })
+    assert_equal 0, result.exit_code
+  end
+
+  test 'extra_env overrides tool credentials when keys collide' do
+    @tool.command_template = 'env'
+    @tool.credentials = { 'SHARED_KEY' => 'from_tool' }
+    @tool.working_directory = nil
+    executor = Tools::Executor.new(agent_tool: @tool)
+
+    status = stub(exitstatus: 0)
+    Open3.expects(:capture3).with(
+      { 'SHARED_KEY' => 'from_principal' },
+      'env',
+      chdir: Rails.root.to_s
+    ).returns(['output', '', status])
+
+    result = executor.call({}, extra_env: { 'SHARED_KEY' => 'from_principal' })
+    assert_equal 0, result.exit_code
+  end
 end
