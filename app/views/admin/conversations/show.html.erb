@@ -1,0 +1,65 @@
+<% content_for(:title) { "Conversation — #{@conversation.agent.name} — Steward Admin" } %>
+
+<div class="page-header">
+  <h1>
+    <%= @conversation.agent.name %> &middot; <%= @conversation.user.name || "User ##{@conversation.user.id}" %>
+  </h1>
+  <%= link_to "Back", admin_conversations_path, class: "btn btn-secondary btn-sm" %>
+</div>
+
+<!-- State summary -->
+<% if @state %>
+  <div class="card">
+    <h2>Conversation State</h2>
+    <table>
+      <tr><td style="width:160px"><strong>Status</strong></td><td><span class="badge badge-green"><%= @conversation.status %></span></td></tr>
+      <tr><td><strong>Channel</strong></td><td><span class="badge badge-blue"><%= @conversation.channel %></span></td></tr>
+      <tr><td><strong>Messages</strong></td><td><%= @messages.size %></td></tr>
+    </table>
+
+    <% if @state.summary.present? %>
+      <details class="mt-2">
+        <summary>Rolling summary</summary>
+        <pre style="white-space: pre-wrap; font-size: 13px; background: #f9f9f9; padding: 12px; border-radius: 6px; margin-top: 4px;"><%= @state.summary %></pre>
+      </details>
+    <% end %>
+
+    <% if @state.pinned_facts.present? %>
+      <details class="mt-2">
+        <summary>Pinned facts</summary>
+        <pre style="white-space: pre-wrap; font-size: 13px; background: #f9f9f9; padding: 12px; border-radius: 6px; margin-top: 4px;"><%= @state.pinned_facts %></pre>
+      </details>
+    <% end %>
+
+    <% if @state.active_goals.present? %>
+      <details class="mt-2">
+        <summary>Active goals</summary>
+        <pre style="white-space: pre-wrap; font-size: 13px; background: #f9f9f9; padding: 12px; border-radius: 6px; margin-top: 4px;"><%= @state.active_goals %></pre>
+      </details>
+    <% end %>
+  </div>
+<% end %>
+
+<!-- Messages -->
+<div class="card">
+  <h2>Messages (<%= @messages.size %>)</h2>
+
+  <% @messages.each do |msg| %>
+    <div class="message message-<%= msg.role %>">
+      <div class="message-meta">
+        <span class="badge badge-<%= msg.role %>"><%= msg.role %></span>
+        &nbsp;<%= msg.created_at.strftime("%b %-d, %H:%M:%S") %>
+        <% if msg.metadata&.dig("input_tokens") || msg.metadata&.dig("output_tokens") %>
+          &nbsp;&middot;&nbsp;
+          <% if msg.metadata["input_tokens"] %>in: <%= msg.metadata["input_tokens"] %><% end %>
+          <% if msg.metadata["output_tokens"] %> out: <%= msg.metadata["output_tokens"] %><% end %>
+        <% end %>
+      </div>
+      <div class="message-content"><%= msg.content %></div>
+    </div>
+  <% end %>
+
+  <% if @messages.empty? %>
+    <p class="text-muted">No messages in this conversation.</p>
+  <% end %>
+</div>

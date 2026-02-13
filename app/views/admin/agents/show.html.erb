@@ -1,0 +1,115 @@
+<% content_for(:title) { "#{@agent.name} — Steward Admin" } %>
+
+<div class="page-header">
+  <h1><%= @agent.name %></h1>
+  <%= link_to "Edit", edit_admin_agent_path(@agent), class: "btn btn-primary btn-sm" %>
+</div>
+
+<!-- Settings -->
+<div class="card">
+  <h2>Settings</h2>
+  <table>
+    <tr><td style="width:160px"><strong>Model</strong></td><td><span class="badge badge-gray"><%= @agent.model %></span></td></tr>
+    <tr><td><strong>Summarization model</strong></td><td><span class="badge badge-gray"><%= @agent.summarization_model %></span></td></tr>
+    <tr><td><strong>Extraction model</strong></td><td><span class="badge badge-gray"><%= @agent.extraction_model %></span></td></tr>
+    <tr><td><strong>Telegram token</strong></td><td><%= @agent.settings&.dig("telegram_bot_token").present? ? "Configured" : "Not set (using default)" %></td></tr>
+  </table>
+
+  <h3 class="mt-2">Token Budgets</h3>
+  <table>
+    <thead><tr><th>Layer</th><th>Budget</th></tr></thead>
+    <tbody>
+      <% @agent.token_budgets.each do |key, value| %>
+        <tr><td><%= key.titleize %></td><td><%= value.to_i.to_fs(:delimited) %></td></tr>
+      <% end %>
+    </tbody>
+  </table>
+
+  <details class="mt-2">
+    <summary>System prompt</summary>
+    <pre style="white-space: pre-wrap; font-size: 13px; background: #f9f9f9; padding: 12px; border-radius: 6px; margin-top: 4px;"><%= @agent.system_prompt %></pre>
+  </details>
+</div>
+
+<!-- Principals -->
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+    <h2 style="margin-bottom: 0;">Principals (<%= @principals.size %>)</h2>
+    <%= link_to "Add principal", new_admin_agent_principal_path(@agent), class: "btn btn-secondary btn-sm" %>
+  </div>
+
+  <% if @principals.any? %>
+    <table>
+      <thead><tr><th>Name</th><th>Display Name</th><th>Role</th><th></th></tr></thead>
+      <tbody>
+        <% @principals.each do |ap| %>
+          <tr>
+            <td><%= ap.user.name %></td>
+            <td><%= ap.display_name %></td>
+            <td><%= ap.role.present? ? ap.role : content_tag(:span, "—", class: "text-muted") %></td>
+            <td class="text-right">
+              <%= button_to "Remove", admin_agent_principal_path(@agent, ap), method: :delete, class: "btn btn-danger btn-sm", data: { turbo_confirm: "Remove #{ap.label} as a principal?" } %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <p class="text-muted">No principals configured. This agent runs in standard mode.</p>
+  <% end %>
+</div>
+
+<!-- Tools -->
+<div class="card">
+  <h2>Tools (<%= @tools.size %>)</h2>
+  <% if @tools.any? %>
+    <table>
+      <thead><tr><th>Name</th><th>Status</th><th>Command</th><th></th></tr></thead>
+      <tbody>
+        <% @tools.each do |tool| %>
+          <tr>
+            <td><code><%= tool.name %></code></td>
+            <td>
+              <%= form_with url: toggle_admin_agent_tool_path(@agent, tool), method: :patch, class: "inline-form" do %>
+                <button type="submit" class="btn btn-sm <%= tool.enabled? ? 'badge-green' : 'badge-gray' %>" style="cursor: pointer; border: none;">
+                  <%= tool.enabled? ? "Enabled" : "Disabled" %>
+                </button>
+              <% end %>
+            </td>
+            <td><code style="font-size: 12px;"><%= tool.command_template %></code></td>
+            <td class="text-right">
+              <%= link_to "Edit", edit_admin_agent_tool_path(@agent, tool), class: "btn btn-secondary btn-sm" %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <p class="text-muted">No tools configured for this agent.</p>
+  <% end %>
+</div>
+
+<!-- Recent Conversations -->
+<div class="card">
+  <h2>Recent Conversations</h2>
+  <% if @recent_conversations.any? %>
+    <table>
+      <thead><tr><th>User</th><th>Channel</th><th>Messages</th><th>Last updated</th><th></th></tr></thead>
+      <tbody>
+        <% @recent_conversations.each do |conv| %>
+          <tr>
+            <td><%= conv.user.name || "User ##{conv.user.id}" %></td>
+            <td><span class="badge badge-blue"><%= conv.channel %></span></td>
+            <td><%= conv.messages.size %></td>
+            <td><%= conv.updated_at.strftime("%b %-d, %Y %H:%M") %></td>
+            <td class="text-right">
+              <%= link_to "View", admin_conversation_path(conv), class: "btn btn-secondary btn-sm" %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <p class="text-muted">No conversations yet.</p>
+  <% end %>
+</div>

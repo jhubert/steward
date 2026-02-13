@@ -1,0 +1,69 @@
+<% content_for(:title) { "Edit #{@agent_tool.name} — Steward Admin" } %>
+
+<div class="page-header">
+  <h1>Edit Tool: <%= @agent_tool.name %></h1>
+  <%= link_to "Back", admin_agent_path(@agent), class: "btn btn-secondary btn-sm" %>
+</div>
+
+<div class="card">
+  <%= form_with url: admin_agent_tool_path(@agent, @agent_tool), method: :patch, local: true do |f| %>
+    <% if @agent_tool.errors.any? %>
+      <div class="flash flash-alert">
+        <% @agent_tool.errors.full_messages.each do |msg| %>
+          <div><%= msg %></div>
+        <% end %>
+      </div>
+    <% end %>
+
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" value="<%= @agent_tool.name %>" disabled style="background: #f5f5f5;">
+      <div class="hint">Tool names cannot be changed after creation.</div>
+    </div>
+
+    <div class="form-group">
+      <label for="agent_tool_description">Description</label>
+      <textarea name="agent_tool[description]" id="agent_tool_description" rows="3"><%= @agent_tool.description %></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="agent_tool_command_template">Command Template</label>
+      <input type="text" name="agent_tool[command_template]" id="agent_tool_command_template" value="<%= @agent_tool.command_template %>" class="mono">
+      <div class="hint">Use {param} placeholders for LLM input substitution.</div>
+    </div>
+
+    <div class="form-group">
+      <label for="agent_tool_working_directory">Working Directory</label>
+      <input type="text" name="agent_tool[working_directory]" id="agent_tool_working_directory" value="<%= @agent_tool.working_directory %>">
+    </div>
+
+    <div class="form-group">
+      <label for="agent_tool_timeout_seconds">Timeout (seconds)</label>
+      <input type="number" name="agent_tool[timeout_seconds]" id="agent_tool_timeout_seconds" value="<%= @agent_tool.timeout_seconds %>" min="1" max="300">
+    </div>
+
+    <div class="form-group">
+      <label for="agent_tool_input_schema">Input Schema (JSON)</label>
+      <textarea name="agent_tool[input_schema]" id="agent_tool_input_schema" rows="10" class="mono"><%= JSON.pretty_generate(@agent_tool.input_schema) %></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>
+        <input type="hidden" name="agent_tool[enabled]" value="0">
+        <input type="checkbox" name="agent_tool[enabled]" value="1" <%= "checked" if @agent_tool.enabled? %>>
+        Enabled
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label>Credentials</label>
+      <p class="text-muted" style="font-size: 13px;"><%= @agent_tool.credentials_json.present? ? "Configured (encrypted)" : "Not set" %></p>
+      <div class="hint">Credentials are managed via Rails console for security.</div>
+    </div>
+
+    <div style="margin-top: 16px;">
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+      <%= link_to "Cancel", admin_agent_path(@agent), class: "btn btn-secondary", style: "margin-left: 8px;" %>
+    </div>
+  <% end %>
+</div>

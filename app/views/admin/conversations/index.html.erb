@@ -1,0 +1,59 @@
+<% content_for(:title) { "Conversations — Steward Admin" } %>
+
+<div class="page-header">
+  <h1>Conversations</h1>
+</div>
+
+<div class="card">
+  <div class="filter-bar">
+    <label>Filter by agent:</label>
+    <%= form_with url: admin_conversations_path, method: :get, local: true, class: "inline-form" do %>
+      <select name="agent_id" onchange="this.form.submit()">
+        <option value="">All agents</option>
+        <% @agents.each do |agent| %>
+          <option value="<%= agent.id %>" <%= "selected" if params[:agent_id].to_s == agent.id.to_s %>><%= agent.name %></option>
+        <% end %>
+      </select>
+    <% end %>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>User</th>
+        <th>Agent</th>
+        <th>Channel</th>
+        <th>Messages</th>
+        <th>Last updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @conversations.each do |conv| %>
+        <tr>
+          <td><%= conv.user.name || "User ##{conv.user.id}" %></td>
+          <td><%= link_to conv.agent.name, admin_agent_path(conv.agent) %></td>
+          <td><span class="badge badge-blue"><%= conv.channel %></span></td>
+          <td><%= conv.messages.size %></td>
+          <td><%= conv.updated_at.strftime("%b %-d, %Y %H:%M") %></td>
+          <td class="text-right">
+            <%= link_to "View", admin_conversation_path(conv), class: "btn btn-secondary btn-sm" %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+
+  <% if @conversations.empty? %>
+    <p class="text-muted" style="padding: 16px 0; text-align: center;">No conversations found.</p>
+  <% end %>
+
+  <div class="pagination">
+    <% if @page > 1 %>
+      <%= link_to "← Previous", admin_conversations_path(page: @page - 1, agent_id: params[:agent_id]), class: "btn btn-secondary btn-sm" %>
+    <% end %>
+    <% if @has_next %>
+      <%= link_to "Next →", admin_conversations_path(page: @page + 1, agent_id: params[:agent_id]), class: "btn btn-secondary btn-sm" %>
+    <% end %>
+  </div>
+</div>

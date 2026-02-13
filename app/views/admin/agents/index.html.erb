@@ -1,0 +1,34 @@
+<% content_for(:title) { "Agents — Steward Admin" } %>
+
+<div class="page-header">
+  <h1>Agents</h1>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Model</th>
+        <th>Principals</th>
+        <th>Tools</th>
+        <th>Conversations</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @agents.each do |agent| %>
+        <tr>
+          <td><%= link_to agent.name, admin_agent_path(agent) %></td>
+          <td><span class="badge badge-gray"><%= agent.model.split('/').last.split('-').first(3).join('-') %></span></td>
+          <td><%= agent.agent_principals.size %></td>
+          <td><%= agent.agent_tools.size %></td>
+          <td><%= agent.conversations.size %></td>
+          <td class="text-right">
+            <%= link_to "Edit", edit_admin_agent_path(agent), class: "btn btn-secondary btn-sm" %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
