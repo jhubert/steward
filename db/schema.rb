@@ -10,9 +10,10 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_12_184259) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_13_033532) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+  enable_extension "vector"
 
   create_table "agent_principals", force: :cascade do |t|
     t.bigint "agent_id", null: false
@@ -99,11 +100,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_12_184259) do
     t.text "content", null: false
     t.bigint "conversation_id"
     t.datetime "created_at", null: false
+    t.vector "embedding", limit: 1536
     t.jsonb "metadata", default: {}
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.bigint "workspace_id", null: false
     t.index ["conversation_id"], name: "index_memory_items_on_conversation_id"
+    t.index ["embedding"], name: "index_memory_items_on_embedding", opclass: :vector_cosine_ops, using: :hnsw
     t.index ["user_id"], name: "index_memory_items_on_user_id"
     t.index ["workspace_id", "user_id", "category"], name: "index_memory_items_on_workspace_id_and_user_id_and_category"
     t.index ["workspace_id"], name: "index_memory_items_on_workspace_id"

@@ -46,13 +46,14 @@ class ProcessMessageJob < ApplicationJob
     # Post-delivery jobs (best-effort, failures here don't affect the user)
     CompactConversationJob.perform_later(conversation.id) if conversation.needs_compaction?
     ExtractMemoryJob.perform_later(conversation.id, message.id, reply.id)
+    GenerateTitleJob.perform_later(conversation.id) if conversation.title.blank?
   end
 
   private
 
   def generate_reply(message, conversation, agent, adapter)
     # Build prompt from memory layers
-    assembler = Prompt::Assembler.new(conversation)
+    assembler = Prompt::Assembler.new(conversation, incoming_message: message.content)
     messages = assembler.call
 
     # Append the new user message

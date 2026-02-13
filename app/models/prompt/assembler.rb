@@ -1,10 +1,11 @@
 module Prompt
   class Assembler
-    def initialize(conversation)
+    def initialize(conversation, incoming_message: nil)
       @conversation = conversation
       @agent = conversation.agent
       @state = conversation.ensure_state!
       @budgets = @agent.token_budgets
+      @incoming_message = incoming_message
     end
 
     # Build the messages array for the LLM API call.
@@ -26,6 +27,8 @@ module Prompt
       parts << principal_context if @agent.principal_mode?
       parts << skill_instructions if active_skills.any?
       parts << conversation_state if has_conversation_state?
+      parts << long_term_recall if @incoming_message.present?
+      parts << thread_catalog
       parts.compact.join("\n\n---\n\n")
     end
 
@@ -98,6 +101,26 @@ module Prompt
         lines << line
       end
       lines.join("\n")
+    end
+
+    def long_term_recall
+      Memory::Retriever.new(@conversation, budget: @budgets['retrieval'] || 800).call(query: @incoming_message)
+    end
+
+    def thread_catalog
+      other_threads = Conversation.where(
+        workspace: @conversation.workspace,
+        user: @conversation.user,
+        agent: @conversation.agent
+      ).where.not(id: @conversation.id)
+       .where.not(title: nil)
+       .order(updated_at: :desc)
+       .limit(10)
+
+      return nil if other_threads.empty?
+
+      lines = other_threads.map { |c| "- #{c.title}" }
+      "## Other Conversation Threads\n#{lines.join("\n")}"
     end
 
     def build_history

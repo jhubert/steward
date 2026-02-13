@@ -26,7 +26,7 @@ class Agent < ApplicationRecord
   end
 
   def token_budgets
-    defaults = { 'agent_core' => 800, 'skills' => 2000, 'state' => 1500, 'history' => 4000, 'response' => 4000, 'principal_context' => 1200 }
+    defaults = { 'agent_core' => 800, 'skills' => 2000, 'state' => 1500, 'history' => 4000, 'response' => 4000, 'principal_context' => 1200, 'retrieval' => 800 }
     defaults.merge(settings&.dig('token_budgets') || {})
   end
 

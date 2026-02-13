@@ -55,4 +55,65 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     assert_not_includes system_content, 'Current Speaker'
     assert_not_includes system_content, 'Your Principals'
   end
+
+  test 'includes Layer D when incoming_message is set' do
+    # Create a memory item that matches the query
+    MemoryItem.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      conversation: @conversation,
+      category: 'fact',
+      content: 'Alice likes pizza'
+    )
+
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    messages = Prompt::Assembler.new(@conversation, incoming_message: "pizza").call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Long-Term Memory'
+    assert_includes system_content, 'Alice likes pizza'
+  end
+
+  test 'omits Layer D when incoming_message is nil' do
+    MemoryItem.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      conversation: @conversation,
+      category: 'fact',
+      content: 'Alice likes pizza'
+    )
+
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, 'Long-Term Memory'
+  end
+
+  test 'includes thread catalog with titled conversations' do
+    # Create another conversation with a title
+    Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:steward),
+      channel: 'telegram',
+      external_thread_key: 'catalog_test',
+      title: 'Planning the team offsite'
+    )
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Other Conversation Threads'
+    assert_includes system_content, 'Planning the team offsite'
+  end
+
+  test 'omits thread catalog when no titled conversations exist' do
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, 'Other Conversation Threads'
+  end
 end

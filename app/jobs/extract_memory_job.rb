@@ -23,7 +23,7 @@ class ExtractMemoryJob < ApplicationJob
     return if items.empty?
 
     items.each do |item|
-      MemoryItem.create!(
+      record = MemoryItem.create!(
         workspace: conversation.workspace,
         user: conversation.user,
         conversation: conversation,
@@ -34,6 +34,7 @@ class ExtractMemoryJob < ApplicationJob
           source_assistant_message_id: assistant_message_id
         }
       )
+      GenerateEmbeddingJob.perform_later(record.id)
     end
 
     Rails.logger.info(
