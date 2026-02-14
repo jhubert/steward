@@ -5,6 +5,7 @@ class Agent < ApplicationRecord
   has_many :agent_principals, dependent: :destroy
   has_many :principals, through: :agent_principals, source: :user
   has_many :agent_tools, dependent: :destroy
+  has_many :scheduled_tasks, dependent: :destroy
 
   validates :name, presence: true
   validates :system_prompt, presence: true

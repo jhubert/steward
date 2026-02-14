@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_13_154332) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_14_064315) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -128,6 +128,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_13_154332) do
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
     t.index ["user_id"], name: "index_messages_on_user_id"
     t.index ["workspace_id"], name: "index_messages_on_workspace_id"
+  end
+
+  create_table "scheduled_tasks", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.bigint "conversation_id", null: false
+    t.datetime "created_at", null: false
+    t.text "description", null: false
+    t.boolean "enabled", default: true, null: false
+    t.integer "interval_seconds"
+    t.datetime "last_run_at"
+    t.jsonb "metadata", default: {}
+    t.datetime "next_run_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "workspace_id", null: false
+    t.index ["agent_id"], name: "index_scheduled_tasks_on_agent_id"
+    t.index ["conversation_id"], name: "index_scheduled_tasks_on_conversation_id"
+    t.index ["enabled", "next_run_at"], name: "index_scheduled_tasks_on_enabled_and_next_run_at"
+    t.index ["workspace_id", "agent_id"], name: "index_scheduled_tasks_on_workspace_id_and_agent_id"
+    t.index ["workspace_id", "conversation_id"], name: "index_scheduled_tasks_on_workspace_id_and_conversation_id"
+    t.index ["workspace_id"], name: "index_scheduled_tasks_on_workspace_id"
   end
 
   create_table "solid_queue_blocked_executions", force: :cascade do |t|
@@ -307,6 +327,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_13_154332) do
   add_foreign_key "messages", "conversations"
   add_foreign_key "messages", "users"
   add_foreign_key "messages", "workspaces"
+  add_foreign_key "scheduled_tasks", "agents"
+  add_foreign_key "scheduled_tasks", "conversations"
+  add_foreign_key "scheduled_tasks", "workspaces"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_failed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

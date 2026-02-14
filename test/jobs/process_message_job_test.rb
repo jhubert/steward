@@ -354,6 +354,191 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_equal 'Sorry, you need to be a principal.', reply.content
   end
 
+  test 'download_file virtual tool downloads successfully' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'download_file',
+      tool_id: 'toolu_dl_ok',
+      input: { 'url' => 'https://example.com/report.pdf' }
+    )
+    text_response = build_text_response('File downloaded.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    downloader_result = Tools::FileDownloader::Result.new(success: true, path: "/tmp/test.pdf", error: nil, size: 1024)
+    Tools::FileDownloader.any_instance.stubs(:call).returns(downloader_result)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/downloaded successfully/, tool_content[:content])
+    assert_match(/1024 bytes/, tool_content[:content])
+  end
+
+  test 'download_file virtual tool handles failure' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'download_file',
+      tool_id: 'toolu_dl_fail',
+      input: { 'url' => 'https://example.com/missing.txt' }
+    )
+    text_response = build_text_response('Download failed.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    downloader_result = Tools::FileDownloader::Result.new(success: false, path: nil, error: "HTTP 404", size: nil)
+    Tools::FileDownloader.any_instance.stubs(:call).returns(downloader_result)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Download failed.*HTTP 404/, tool_content[:content])
+  end
+
+  test 'schedule_task virtual tool creates a scheduled task' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'schedule_task',
+      tool_id: 'toolu_sched',
+      input: { 'description' => 'Daily standup', 'run_at' => 1.hour.from_now.iso8601, 'interval' => 'daily' }
+    )
+    text_response = build_text_response('Task scheduled!')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    assert_difference 'ScheduledTask.count', 1 do
+      ProcessMessageJob.perform_now(jennifer_message.id)
+    end
+
+    task = ScheduledTask.last
+    assert_equal 'Daily standup', task.description
+    assert_equal 86_400, task.interval_seconds
+    assert task.enabled?
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Task scheduled/, tool_content[:content])
+  end
+
+  test 'list_scheduled_tasks virtual tool returns task list' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'list_scheduled_tasks',
+      tool_id: 'toolu_list',
+      input: {}
+    )
+    text_response = build_text_response('Here are your tasks.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/standup/, tool_content[:content])
+  end
+
+  test 'cancel_scheduled_task virtual tool cancels a task' do
+    task = scheduled_tasks(:alice_daily_standup)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'cancel_scheduled_task',
+      tool_id: 'toolu_cancel',
+      input: { 'task_id' => task.id }
+    )
+    text_response = build_text_response('Task cancelled.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    task.reload
+    assert_not task.enabled?
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/cancelled/, tool_content[:content])
+  end
+
+  test 'cancel_scheduled_task returns error for wrong conversation' do
+    # bob_disabled_task belongs to bob_jennifer, not alice_jennifer
+    task = scheduled_tasks(:bob_disabled_task)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'cancel_scheduled_task',
+      tool_id: 'toolu_cancel_wrong',
+      input: { 'task_id' => task.id }
+    )
+    text_response = build_text_response('Could not find that task.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/not found/, tool_content[:content])
+  end
+
   test 'agents without agent-specific tools still get builtin tools' do
     stub_text_response('Hi there!')
 

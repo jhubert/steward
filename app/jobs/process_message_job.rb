@@ -247,6 +247,14 @@ class ProcessMessageJob < ApplicationJob
       virtual_result("read_notes", content)
     when "google_setup"
       execute_google_setup(input, conversation)
+    when "download_file"
+      execute_download_file(input, conversation)
+    when "schedule_task"
+      execute_schedule_task(input, conversation)
+    when "list_scheduled_tasks"
+      execute_list_scheduled_tasks(conversation)
+    when "cancel_scheduled_task"
+      execute_cancel_scheduled_task(input, conversation)
     end
   end
 
@@ -299,6 +307,101 @@ class ProcessMessageJob < ApplicationJob
       virtual_result("google_setup", "Web setup URL (valid for 1 hour):\n#{url}\n\nSend this link to the user. They can complete Google account setup through the web interface.")
     else
       virtual_result("google_setup", "Error: Unknown action '#{action}'. Valid actions: check, start, complete, generate_link.")
+    end
+  end
+
+  def execute_schedule_task(input, conversation)
+    description = input["description"].to_s.strip
+    run_at_str = input["run_at"].to_s.strip
+    interval = input["interval"].to_s.strip.presence || "once"
+    custom_seconds = input["interval_seconds"]
+
+    if description.blank? || run_at_str.blank?
+      return virtual_result("schedule_task", "Error: 'description' and 'run_at' are required.")
+    end
+
+    begin
+      run_at = Time.parse(run_at_str)
+    rescue ArgumentError
+      return virtual_result("schedule_task", "Error: Invalid run_at datetime '#{run_at_str}'. Use ISO 8601 format.")
+    end
+
+    interval_seconds = case interval
+    when "once" then nil
+    when "hourly" then 3600
+    when "daily" then 86_400
+    when "weekly" then 604_800
+    when "custom"
+      custom_seconds.to_i > 0 ? custom_seconds.to_i : nil
+    end
+
+    if interval == "custom" && interval_seconds.nil?
+      return virtual_result("schedule_task", "Error: 'interval_seconds' is required for custom intervals and must be positive.")
+    end
+
+    task = ScheduledTask.create!(
+      workspace: conversation.workspace,
+      agent: conversation.agent,
+      conversation: conversation,
+      description: description,
+      next_run_at: run_at,
+      interval_seconds: interval_seconds
+    )
+
+    schedule_desc = interval_seconds ? "recurring (#{task.interval_description})" : "one-time"
+    virtual_result("schedule_task", "Task scheduled (ID: #{task.id}).\nDescription: #{description}\nNext run: #{run_at.iso8601}\nType: #{schedule_desc}", input: description.truncate(200))
+  end
+
+  def execute_list_scheduled_tasks(conversation)
+    tasks = conversation.scheduled_tasks.order(:next_run_at)
+
+    if tasks.empty?
+      return virtual_result("list_scheduled_tasks", "No scheduled tasks for this conversation.")
+    end
+
+    lines = tasks.map do |t|
+      status = t.enabled? ? "active" : "disabled"
+      "- [#{t.id}] #{t.description} | Next: #{t.next_run_at&.iso8601 || 'N/A'} | #{t.interval_description} | #{status}"
+    end
+
+    virtual_result("list_scheduled_tasks", "Scheduled tasks:\n#{lines.join("\n")}")
+  end
+
+  def execute_cancel_scheduled_task(input, conversation)
+    task_id = input["task_id"]
+
+    unless task_id
+      return virtual_result("cancel_scheduled_task", "Error: 'task_id' is required.")
+    end
+
+    task = conversation.scheduled_tasks.find_by(id: task_id)
+
+    unless task
+      return virtual_result("cancel_scheduled_task", "Error: Task ##{task_id} not found in this conversation.")
+    end
+
+    task.cancel!
+    virtual_result("cancel_scheduled_task", "Task ##{task.id} cancelled: #{task.description}", input: task_id.to_s)
+  end
+
+  def execute_download_file(input, conversation)
+    url = input["url"].to_s.strip
+    filename = input["filename"]&.strip.presence
+
+    if url.blank?
+      return virtual_result("download_file", "Error: 'url' parameter is required.")
+    end
+
+    downloader = Tools::FileDownloader.new(
+      agent_id: conversation.agent_id,
+      conversation_id: conversation.id
+    )
+    result = downloader.call(url, filename: filename)
+
+    if result.success
+      virtual_result("download_file", "File downloaded successfully.\nPath: #{result.path}\nSize: #{result.size} bytes", input: url.truncate(200))
+    else
+      virtual_result("download_file", "Download failed: #{result.error}", input: url.truncate(200))
     end
   end
 

@@ -51,6 +51,16 @@ class Tools::ExecutorTest < ActiveSupport::TestCase
     assert_equal Rails.root.to_s, executor.resolve_working_directory
   end
 
+  test 'build_argv with freeform command string substitution' do
+    tool = AgentTool.new(
+      command_template: 'ruby run.rb {command}',
+      timeout_seconds: 30
+    )
+    executor = Tools::Executor.new(agent_tool: tool)
+    argv = executor.build_argv({ 'command' => 'pr list --repo org/repo --limit 5' })
+    assert_equal ['ruby', 'run.rb', 'pr list --repo org/repo --limit 5'], argv
+  end
+
   test 'call executes command and returns result' do
     @tool.command_template = 'echo hello'
     @tool.working_directory = nil

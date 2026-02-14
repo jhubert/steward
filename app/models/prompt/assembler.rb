@@ -25,6 +25,7 @@ module Prompt
       parts = []
       parts << agent_core
       parts << date_context
+      parts << capabilities_context
       parts << principal_context if @agent.principal_mode?
       parts << skill_instructions if active_skills.any?
       parts << conversation_state if has_conversation_state?
@@ -60,6 +61,34 @@ module Prompt
           marker = d == today ? "**#{d.strftime('%a %-d')}**" : d.strftime('%a %-d')
           marker
         }.join(" | ")
+      end
+
+      lines.join("\n")
+    end
+
+    CAPABILITY_HINTS = {
+      "download_file" => "Download files from URLs for the user (documents, images, data). Offer when they share a link or need to fetch something from the web.",
+      "schedule_task" => "Schedule one-time or recurring tasks (reminders, daily standups, weekly reports). Proactively offer when the user mentions wanting to be reminded, needing recurring check-ins, or setting up routines.",
+      "list_scheduled_tasks" => "List active scheduled tasks. Use when the user asks what's scheduled or wants to review their reminders.",
+      "cancel_scheduled_task" => "Cancel a scheduled task. Use when the user wants to stop a reminder or recurring task.",
+      "github" => "Access GitHub via the `gh` CLI. Can list/view/create PRs, issues, releases, search code, and call the GitHub API. Pass the full subcommand without the `gh` prefix (e.g. `pr list --repo owner/repo`)."
+    }.freeze
+
+    def capabilities_context
+      lines = ["## Your Capabilities"]
+      lines << "You have access to the following tools. Use them proactively when relevant — don't wait to be asked if the situation clearly calls for one."
+      lines << ""
+
+      # Agent-specific tools
+      @agent.enabled_tools.each do |tool|
+        hint = CAPABILITY_HINTS[tool.name]
+        desc = hint || tool.description
+        lines << "- **#{tool.name}**: #{desc}"
+      end
+
+      # Builtin tools with hints (skip save_note/read_notes/google_setup — the LLM already understands those from the schema)
+      %w[download_file schedule_task list_scheduled_tasks cancel_scheduled_task].each do |name|
+        lines << "- **#{name}**: #{CAPABILITY_HINTS[name]}"
       end
 
       lines.join("\n")

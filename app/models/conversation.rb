@@ -6,6 +6,7 @@ class Conversation < ApplicationRecord
   has_many :messages, dependent: :destroy
   has_one :state, class_name: 'ConversationState', dependent: :destroy
   has_many :memory_items, dependent: :nullify
+  has_many :scheduled_tasks, dependent: :destroy
 
   validates :channel, presence: true
 

@@ -131,6 +131,27 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     assert_includes system_content, 'Fri'
   end
 
+  test 'includes capabilities context with builtin tools' do
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Your Capabilities'
+    assert_includes system_content, 'download_file'
+    assert_includes system_content, 'schedule_task'
+  end
+
+  test 'includes agent-specific tools in capabilities context' do
+    conversation = conversations(:alice_jennifer)
+    conversation.ensure_state!
+
+    messages = Prompt::Assembler.new(conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Your Capabilities'
+    assert_includes system_content, 'github'
+    assert_includes system_content, 'find_availability'
+  end
+
   test 'date context uses agent timezone setting when configured' do
     agent = @conversation.agent
     agent.update!(settings: agent.settings.merge("timezone" => "Eastern Time (US & Canada)"))
