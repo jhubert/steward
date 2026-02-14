@@ -116,4 +116,28 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
 
     assert_not_includes system_content, 'Other Conversation Threads'
   end
+
+  test 'includes date context with current date and calendar reference' do
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    today = Time.current.in_time_zone("Pacific Time (US & Canada)").to_date
+
+    assert_includes system_content, 'Current Date & Time'
+    assert_includes system_content, today.strftime('%A, %B %-d, %Y')
+    assert_includes system_content, 'Calendar Reference'
+    # Verify it contains day-of-week abbreviations for lookup
+    assert_includes system_content, 'Mon'
+    assert_includes system_content, 'Fri'
+  end
+
+  test 'date context uses agent timezone setting when configured' do
+    agent = @conversation.agent
+    agent.update!(settings: agent.settings.merge("timezone" => "Eastern Time (US & Canada)"))
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'EST'
+  end
 end

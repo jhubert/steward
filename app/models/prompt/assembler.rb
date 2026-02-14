@@ -24,6 +24,7 @@ module Prompt
     def build_system_content
       parts = []
       parts << agent_core
+      parts << date_context
       parts << principal_context if @agent.principal_mode?
       parts << skill_instructions if active_skills.any?
       parts << conversation_state if has_conversation_state?
@@ -34,6 +35,34 @@ module Prompt
 
     def agent_core
       @agent.system_prompt
+    end
+
+    def date_context
+      zone = ActiveSupport::TimeZone[@agent.settings&.dig("timezone") || "Pacific Time (US & Canada)"]
+      now = Time.current.in_time_zone(zone)
+      today = now.to_date
+
+      lines = []
+      lines << "## Current Date & Time"
+      lines << "**Today: #{now.strftime('%A, %B %-d, %Y')}**"
+      lines << "Current time: #{now.strftime('%-I:%M %p %Z')}"
+      lines << ""
+      lines << "### Calendar Reference"
+      lines << "When mentioning dates, ALWAYS verify the day-of-week against this reference."
+      lines << ""
+
+      # Show 3 weeks: current week (Mon-Sun) + next 2 weeks
+      week_start = today.beginning_of_week(:monday)
+      3.times do |week|
+        start = week_start + (week * 7)
+        days = (0..6).map { |d| start + d }
+        lines << days.map { |d|
+          marker = d == today ? "**#{d.strftime('%a %-d')}**" : d.strftime('%a %-d')
+          marker
+        }.join(" | ")
+      end
+
+      lines.join("\n")
     end
 
     def principal_context
