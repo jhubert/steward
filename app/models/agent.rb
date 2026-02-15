@@ -66,4 +66,14 @@ class Agent < ApplicationRecord
   def telegram_bot_token
     settings&.dig('telegram_bot_token') || Rails.application.credentials.dig(:telegram, :bot_token)
   end
+
+  def register_telegram_webhook!
+    token = telegram_bot_token
+    return { ok: false, description: "No bot token configured" } unless token.present?
+
+    url = "https://steward.boardwise.co/webhooks/telegram/#{id}"
+    response = HTTPX.post("https://api.telegram.org/bot#{token}/setWebhook", json: { url: url })
+    body = JSON.parse(response.body.to_s)
+    { ok: body["ok"], description: body["description"] }
+  end
 end

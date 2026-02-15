@@ -1,0 +1,49 @@
+<%= form_with url: url, method: method, local: true do |f| %>
+  <% if @agent.errors.any? %>
+    <div class="flash flash-alert">
+      <% @agent.errors.full_messages.each do |msg| %>
+        <div><%= msg %></div>
+      <% end %>
+    </div>
+  <% end %>
+
+  <div class="form-group">
+    <label for="agent_name">Name</label>
+    <input type="text" name="agent[name]" id="agent_name" value="<%= @agent.name %>" required>
+  </div>
+
+  <div class="form-group">
+    <label for="agent_system_prompt">System Prompt</label>
+    <textarea name="agent[system_prompt]" id="agent_system_prompt" rows="8" class="mono" required><%= @agent.system_prompt %></textarea>
+  </div>
+
+  <div class="form-group">
+    <label for="agent_model">Model</label>
+    <select name="agent[model]" id="agent_model">
+      <% %w[claude-sonnet-4-5-20250929 claude-haiku-4-5-20251001 claude-opus-4-6].each do |m| %>
+        <option value="<%= m %>" <%= "selected" if @agent.model == m %>><%= m %></option>
+      <% end %>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="agent_telegram_bot_token">Telegram Bot Token</label>
+    <input type="text" name="agent[telegram_bot_token]" id="agent_telegram_bot_token" value="<%= @agent.settings&.dig('telegram_bot_token') %>" placeholder="Leave blank to use default">
+    <div class="hint">Per-agent token from BotFather. Falls back to global credential if blank.</div>
+  </div>
+
+  <h3 class="mb-2">Token Budgets</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+    <% @agent.token_budgets.each do |key, value| %>
+      <div class="form-group">
+        <label for="token_budget_<%= key %>"><%= key.titleize %></label>
+        <input type="number" name="agent[token_budgets][<%= key %>]" id="token_budget_<%= key %>" value="<%= value %>" min="0" step="100">
+      </div>
+    <% end %>
+  </div>
+
+  <div style="margin-top: 16px;">
+    <button type="submit" class="btn btn-primary"><%= submit_label %></button>
+    <%= link_to "Cancel", cancel_path, class: "btn btn-secondary", style: "margin-left: 8px;" %>
+  </div>
+<% end %>

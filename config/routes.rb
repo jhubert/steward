@@ -8,7 +8,7 @@ Rails.application.routes.draw do
 
   namespace :admin do
     root to: 'agents#index'
-    resources :agents, only: [:index, :show, :edit, :update] do
+    resources :agents, only: [:index, :show, :new, :create, :edit, :update] do
       resources :tools, controller: 'agent_tools', only: [:edit, :update] do
         member { patch :toggle }
       end
