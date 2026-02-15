@@ -182,7 +182,11 @@ module Prompt
     end
 
     def build_history
-      recent = @conversation.messages.chronological.last(history_message_limit)
+      scope = @conversation.messages.chronological
+      if @state.summarized_through_message_id
+        scope = scope.where('id > ?', @state.summarized_through_message_id)
+      end
+      recent = scope.last(history_message_limit)
 
       recent.map do |msg|
         { role: msg.role, content: msg.content }

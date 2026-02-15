@@ -152,6 +152,36 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     assert_includes system_content, 'find_availability'
   end
 
+  test 'build_history excludes messages before summarized_through_message_id' do
+    # Create messages with known ordering (IDs are sequential for created records)
+    old_msg = @conversation.messages.create!(
+      workspace: workspaces(:default), user: users(:alice),
+      role: 'user', content: 'Old message before compaction'
+    )
+    new_msg = @conversation.messages.create!(
+      workspace: workspaces(:default), user: users(:alice),
+      role: 'assistant', content: 'New message after compaction'
+    )
+
+    # Mark through old_msg as summarized
+    @conversation.state.update!(
+      summary: 'Alice greeted Steward.',
+      summarized_through_message_id: old_msg.id
+    )
+
+    messages = Prompt::Assembler.new(@conversation).call
+
+    # The system message should include the summary
+    assert_includes messages.first[:content], 'Alice greeted Steward.'
+
+    # History should NOT include the old message's content
+    history_contents = messages[1..].map { |m| m[:content] }
+    refute_includes history_contents, 'Old message before compaction'
+
+    # History SHOULD include messages after the pointer
+    assert_includes history_contents, 'New message after compaction'
+  end
+
   test 'date context uses agent timezone setting when configured' do
     agent = @conversation.agent
     agent.update!(settings: agent.settings.merge("timezone" => "Eastern Time (US & Canada)"))

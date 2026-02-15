@@ -25,6 +25,11 @@ class ProcessMessageJob < ApplicationJob
       agent = conversation.agent
       adapter = adapter_for(conversation)
 
+      # Session break: compact old messages if there's a long gap
+      if conversation.session_break_needed?(message)
+        conversation.compact_for_session_break!(message)
+      end
+
       # Show typing indicator (best-effort, don't fail the job)
       adapter.send_typing(conversation) rescue nil
 

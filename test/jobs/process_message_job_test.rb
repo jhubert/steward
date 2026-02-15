@@ -539,6 +539,45 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_match(/not found/, tool_content[:content])
   end
 
+  test 'session break triggers inline compaction when gap exceeds threshold' do
+    # Move all existing fixture messages to 10 hours ago
+    @conversation.messages.update_all(created_at: 10.hours.ago)
+
+    new_msg = @conversation.messages.create!(
+      workspace: workspaces(:default), user: users(:alice),
+      role: 'user', content: 'Good morning!',
+      created_at: Time.current
+    )
+
+    # The anthropic client will be called twice: once for summarization, once for the reply
+    summary_content = Data.define(:type, :text).new(type: :text, text: 'Previous session summary')
+    summary_usage = Data.define(:input_tokens, :output_tokens).new(input_tokens: 50, output_tokens: 30)
+    summary_response = Data.define(:content, :usage, :model, :stop_reason).new(
+      content: [summary_content], usage: summary_usage, model: 'claude-sonnet-4-5-20250929', stop_reason: :end_turn
+    )
+
+    text_content = Data.define(:type, :text).new(type: :text, text: 'Good morning!')
+    text_usage = Data.define(:input_tokens, :output_tokens).new(input_tokens: 100, output_tokens: 50)
+    text_response = Data.define(:content, :usage, :model, :stop_reason).new(
+      content: [text_content], usage: text_usage, model: 'claude-sonnet-4-5-20250929', stop_reason: :end_turn
+    )
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(summary_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(new_msg.id)
+
+    state = @conversation.ensure_state!.reload
+    assert_equal 'Previous session summary', state.summary
+    assert state.summarized_through_message_id.present?
+
+    # A system message about the time gap should have been inserted
+    system_msg = @conversation.messages.where(role: 'system').last
+    assert system_msg.present?
+    assert_match(/hours have passed/, system_msg.content)
+  end
+
   test 'agents without agent-specific tools still get builtin tools' do
     stub_text_response('Hi there!')
 

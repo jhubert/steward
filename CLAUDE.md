@@ -161,8 +161,9 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 - **Caddy** reverse proxies to localhost:3003
 - **Platform bot**: @AgentStewardBot (Steward agent, id=1)
 - **Credentials**: `bin/rails credentials:edit` — contains `telegram.bot_token` (fallback), `anthropic.api_key`, and `active_record_encryption` keys
-- **Database**: steward_development / steward_test on local Postgres
+- **Database**: steward_production (live data), steward_test (tests). The app runs in production mode.
 - **Webhook URLs**: `https://steward.boardwise.co/webhooks/telegram/:agent_id`
+- **IMPORTANT**: Always use `RAILS_ENV=production` when running `bin/rails runner`, `bin/rails console`, or any command that queries live data. The development database is empty — all real agents, conversations, and messages are in the production database.
 
 ## Testing
 
