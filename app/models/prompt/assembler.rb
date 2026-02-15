@@ -188,7 +188,10 @@ module Prompt
       end
       recent = scope.last(history_message_limit)
 
-      recent.map do |msg|
+      # Anthropic API only accepts user/assistant roles in messages array;
+      # filter out system messages (session break notices etc. live in the summary)
+      recent.filter_map do |msg|
+        next if msg.role == 'system'
         { role: msg.role, content: msg.content }
       end
     end

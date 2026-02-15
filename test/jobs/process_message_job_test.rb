@@ -574,13 +574,9 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     ProcessMessageJob.perform_now(new_msg.id)
 
     state = @conversation.ensure_state!.reload
-    assert_equal 'Previous session summary', state.summary
+    assert_includes state.summary, 'Previous session summary'
+    assert_includes state.summary, 'Session break'
     assert state.summarized_through_message_id.present?
-
-    # A system message about the time gap should have been inserted
-    system_msg = @conversation.messages.where(role: 'system').last
-    assert system_msg.present?
-    assert_match(/hours have passed/, system_msg.content)
   end
 
   test 'agents without agent-specific tools still get builtin tools' do

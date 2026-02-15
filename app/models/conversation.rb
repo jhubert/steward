@@ -50,18 +50,12 @@ class Conversation < ApplicationRecord
       existing_summary: s.summary,
       messages: unsummarized.limit(50)
     )
-    s.advance_summary!(new_summary, unsummarized.last.id)
-
     zone = ActiveSupport::TimeZone[agent.settings&.dig("timezone") || "Pacific Time (US & Canada)"]
     prev_time = last_msg.created_at.in_time_zone(zone).strftime("%-I:%M %p %Z on %A")
     now_time = current_message.created_at.in_time_zone(zone).strftime("%-I:%M %p %Z on %A")
+    gap_notice = "\n\n---\nSession break: #{gap_hours} hours passed (previous: #{prev_time}, now: #{now_time})."
 
-    messages.create!(
-      workspace: workspace,
-      user: user,
-      role: "system",
-      content: "#{gap_hours} hours have passed since the last message (previous: #{prev_time}, now: #{now_time})."
-    )
+    s.advance_summary!(new_summary + gap_notice, unsummarized.last.id)
   end
 
   # Find or create a conversation for a given channel and external key.

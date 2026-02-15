@@ -59,7 +59,7 @@ class ConversationSessionBreakTest < ActiveSupport::TestCase
     refute @conversation.session_break_needed?(new_msg)
   end
 
-  test 'compact_for_session_break! creates summary and advances pointer' do
+  test 'compact_for_session_break! creates summary with gap notice and advances pointer' do
     new_msg = @conversation.messages.create!(
       workspace: workspaces(:default), user: users(:alice),
       role: 'user', content: 'New message',
@@ -71,11 +71,13 @@ class ConversationSessionBreakTest < ActiveSupport::TestCase
     @conversation.compact_for_session_break!(new_msg)
 
     state = @conversation.state.reload
-    assert_equal 'Summary of old conversation', state.summary
+    assert_includes state.summary, 'Summary of old conversation'
+    assert_includes state.summary, 'Session break'
+    assert_match(/hours passed/, state.summary)
     assert state.summarized_through_message_id.present?
   end
 
-  test 'compact_for_session_break! inserts system message with time gap' do
+  test 'compact_for_session_break! does not create system messages' do
     new_msg = @conversation.messages.create!(
       workspace: workspaces(:default), user: users(:alice),
       role: 'user', content: 'New message',
@@ -84,14 +86,9 @@ class ConversationSessionBreakTest < ActiveSupport::TestCase
 
     stub_summarizer('Summary')
 
-    assert_difference -> { @conversation.messages.where(role: 'system').count }, 1 do
+    assert_no_difference -> { @conversation.messages.count } do
       @conversation.compact_for_session_break!(new_msg)
     end
-
-    system_msg = @conversation.messages.where(role: 'system').last
-    assert_match(/hours have passed/, system_msg.content)
-    assert_match(/previous:/, system_msg.content)
-    assert_match(/now:/, system_msg.content)
   end
 
   test 'compact_for_session_break! is a no-op when no unsummarized messages exist' do
