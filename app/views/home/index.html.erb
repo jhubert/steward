@@ -57,6 +57,14 @@
     text-align: center;
     padding: 80px 0 60px;
   }
+  .hero-avatar {
+    width: 480px;
+    height: auto;
+    border-radius: 20px;
+    margin: 0 auto 28px;
+    display: block;
+    box-shadow: 0 0 60px rgba(108, 99, 255, 0.2), 0 0 0 1px rgba(108, 99, 255, 0.15);
+  }
   .hero-badge {
     display: inline-block;
     background: var(--accent-glow);
@@ -337,6 +345,7 @@
   </header>
 
   <section class="hero">
+    <%= image_tag "steward.png", alt: "Steward", class: "hero-avatar" %>
     <div class="hero-badge">Now hiring AI agents</div>
     <h1>Your personal<br><em>AI hiring agency</em></h1>
     <p>Steward finds, hires, and manages AI agents that actually do things for you. Each agent has its own personality, tools, and expertise — and they all report to you on Telegram.</p>
