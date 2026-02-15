@@ -26,7 +26,9 @@ class RunScheduledTaskJob < ApplicationJob
   def run_direct(task)
     agent_tool = task.agent_tool
     executor = Tools::Executor.new(agent_tool: agent_tool)
-    extra_env = task.agent.principal_env_for(task.user)
+    extra_env = task.agent.principal_env_for(task.user).merge(
+      "STEWARD_USER_ID" => task.user_id.to_s
+    )
 
     started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     result = executor.call(task.tool_input, extra_env: extra_env)

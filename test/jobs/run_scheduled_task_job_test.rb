@@ -178,6 +178,22 @@ class RunScheduledTaskJobTest < ActiveSupport::TestCase
     assert_match(/timed out/, message.content)
   end
 
+  test "direct execution injects STEWARD_USER_ID env var" do
+    task = scheduled_tasks(:alice_direct_mail_check)
+    task.update_columns(next_run_at: 1.minute.ago)
+
+    captured_env = nil
+    result = Tools::Executor::Result.new(stdout: "", stderr: "", exit_code: 0, timed_out: false)
+    Tools::Executor.any_instance.stubs(:call).with { |input, extra_env:|
+      captured_env = extra_env
+      true
+    }.returns(result)
+
+    RunScheduledTaskJob.perform_now(task.id)
+
+    assert_equal task.user_id.to_s, captured_env["STEWARD_USER_ID"]
+  end
+
   test "direct execution advances the task" do
     task = scheduled_tasks(:alice_direct_mail_check)
     task.update_columns(next_run_at: 1.minute.ago)
