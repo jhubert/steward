@@ -110,7 +110,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_equal 'Connection failed', execution.error
   end
 
-  test 'max tool rounds safety valve stops loop' do
+  test 'max tool rounds safety valve stops loop and asks LLM for summary' do
     # Build a response that always returns tool_use
     tool_use_response = build_tool_use_response(
       tool_name: 'search_contacts',
@@ -118,9 +118,14 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
       input: { 'query' => 'test' },
       text: ''
     )
+    # The final call (without tools) returns a helpful summary
+    final_response = build_text_response('I was searching contacts but hit my limit. Try narrowing your search.')
 
     messages_api = stub
-    messages_api.stubs(:create).returns(tool_use_response)
+    # max_tool_rounds (10) tool_use responses, then 1 final text response
+    s = messages_api.stubs(:create).returns(tool_use_response)
+    9.times { s = s.then.returns(tool_use_response) }
+    s.then.returns(final_response)
     Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
 
     jennifer_message = messages(:alice_jennifer_hello)
@@ -131,7 +136,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     ProcessMessageJob.perform_now(jennifer_message.id)
 
     reply = Message.last
-    assert_equal '(Tool use limit reached)', reply.content
+    assert_equal 'I was searching contacts but hit my limit. Try narrowing your search.', reply.content
 
     # Safety valve kicks in at agent.max_tool_rounds (default 10) — the last round breaks before execution
     assert_equal agents(:jennifer).max_tool_rounds - 1, ToolExecution.count

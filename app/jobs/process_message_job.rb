@@ -96,7 +96,25 @@ class ProcessMessageJob < ApplicationJob
         rounds += 1
 
         if rounds >= max_rounds
-          reply_text = extract_text(response.content)
+          # Give the LLM one final call without tools to produce a useful reply
+          messages << { role: 'assistant', content: serialize_content(response.content) }
+          # Provide dummy tool results so the API accepts the messages
+          dummy_results = response.content.filter_map do |block|
+            next unless block.type.to_s == 'tool_use'
+            { type: 'tool_result', tool_use_id: block.id, content: '(not executed — tool use limit reached)' }
+          end
+          messages << { role: 'user', content: dummy_results }
+          messages << { role: 'user', content: 'You have reached the tool use limit for this message. Do NOT call any more tools. Instead, reply to me directly: summarize what you accomplished, what went wrong or is still incomplete, and suggest what I can do next.' }
+
+          final_response = Rails.configuration.anthropic_client.messages.create(
+            model: agent.model,
+            max_tokens: agent.token_budgets['response'],
+            system: messages.first[:content],
+            messages: messages[1..]
+          )
+          total_input_tokens += final_response.usage.input_tokens
+          total_output_tokens += final_response.usage.output_tokens
+          reply_text = extract_text(final_response.content)
           reply_text = "(Tool use limit reached)" if reply_text.blank?
           break
         end
