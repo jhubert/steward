@@ -21,6 +21,22 @@ module Tools
         }
       },
       {
+        name: "remember",
+        description: "Save an important fact to long-term memory. Use this when the user shares something worth remembering across all future conversations — a preference, decision, personal detail, or commitment. These memories persist permanently and are recalled in every conversation with this user.",
+        input_schema: {
+          "type" => "object",
+          "properties" => {
+            "content" => { "type" => "string", "description" => "A concise standalone statement in third person (e.g., 'Prefers morning meetings', 'Works at Acme Corp')" },
+            "category" => {
+              "type" => "string",
+              "enum" => ["decision", "preference", "fact", "commitment"],
+              "description" => "The type of memory: decision (a choice made), preference (a like/dislike), fact (a detail about the user), commitment (something promised for the future)"
+            }
+          },
+          "required" => ["content", "category"]
+        }
+      },
+      {
         name: "google_setup",
         description: "Manage Google account setup for the current user. Use 'check' to see if Google is configured, 'start' to begin OAuth flow, 'complete' to finish it, or 'generate_link' to create a web setup URL.",
         input_schema: {

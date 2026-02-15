@@ -270,6 +270,8 @@ class ProcessMessageJob < ApplicationJob
       state = conversation.ensure_state!
       content = state.scratchpad.present? ? state.scratchpad : "(Scratchpad is empty)"
       virtual_result("read_notes", content)
+    when "remember"
+      execute_remember(input, conversation)
     when "google_setup"
       execute_google_setup(input, conversation)
     when "download_file"
@@ -283,6 +285,31 @@ class ProcessMessageJob < ApplicationJob
     when "send_message"
       execute_send_message(input, conversation)
     end
+  end
+
+  def execute_remember(input, conversation)
+    content = input["content"].to_s.strip
+    category = input["category"].to_s.strip
+
+    if content.blank?
+      return virtual_result("remember", "Error: 'content' parameter is required.")
+    end
+
+    unless Memory::Extractor::VALID_CATEGORIES.include?(category)
+      return virtual_result("remember", "Error: Invalid category '#{category}'. Must be one of: #{Memory::Extractor::VALID_CATEGORIES.join(', ')}.")
+    end
+
+    record = MemoryItem.create!(
+      workspace: conversation.workspace,
+      user: conversation.user,
+      conversation: conversation,
+      category: category,
+      content: content,
+      metadata: { source: "agent_tool" }
+    )
+    GenerateEmbeddingJob.perform_later(record.id)
+
+    virtual_result("remember", "Remembered: [#{category}] #{content}", input: content.truncate(200))
   end
 
   def execute_google_setup(input, conversation)

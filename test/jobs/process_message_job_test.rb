@@ -816,6 +816,92 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_match(/No Telegram conversation/, tool_content[:content])
   end
 
+  test 'remember virtual tool creates a memory item' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'remember',
+      tool_id: 'toolu_remember',
+      input: { 'content' => 'Prefers morning meetings', 'category' => 'preference' }
+    )
+    text_response = build_text_response('Got it, I will remember that.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    assert_difference 'MemoryItem.count', 1 do
+      ProcessMessageJob.perform_now(jennifer_message.id)
+    end
+
+    item = MemoryItem.last
+    assert_equal 'preference', item.category
+    assert_equal 'Prefers morning meetings', item.content
+    assert_equal users(:alice), item.user
+    assert_equal conversations(:alice_jennifer), item.conversation
+    assert_equal 'agent_tool', item.metadata['source']
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Remembered.*preference.*Prefers morning meetings/, tool_content[:content])
+  end
+
+  test 'remember virtual tool rejects invalid category' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'remember',
+      tool_id: 'toolu_remember_bad',
+      input: { 'content' => 'Some note', 'category' => 'bogus' }
+    )
+    text_response = build_text_response('That did not work.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    assert_no_difference 'MemoryItem.count' do
+      ProcessMessageJob.perform_now(jennifer_message.id)
+    end
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Invalid category/, tool_content[:content])
+  end
+
+  test 'remember virtual tool rejects blank content' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'remember',
+      tool_id: 'toolu_remember_blank',
+      input: { 'content' => '', 'category' => 'fact' }
+    )
+    text_response = build_text_response('Missing content.')
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    assert_no_difference 'MemoryItem.count' do
+      ProcessMessageJob.perform_now(jennifer_message.id)
+    end
+  end
+
   test 'agents without agent-specific tools still get builtin tools' do
     stub_text_response('Hi there!')
 
