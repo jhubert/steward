@@ -67,6 +67,26 @@ class Agent < ApplicationRecord
     settings&.dig('telegram_bot_token') || Rails.application.credentials.dig(:telegram, :bot_token)
   end
 
+  def trigger(user:, content:)
+    conversation = Conversation.find_or_start(
+      user: user,
+      agent: self,
+      channel: "background",
+      external_thread_key: "background:#{id}:#{user.id}"
+    )
+
+    message = conversation.messages.create!(
+      workspace: workspace,
+      user: user,
+      role: "user",
+      content: content,
+      metadata: { "source" => "trigger" }
+    )
+
+    ProcessMessageJob.perform_later(message.id)
+    message
+  end
+
   def register_telegram_webhook!
     token = telegram_bot_token
     return { ok: false, description: "No bot token configured" } unless token.present?

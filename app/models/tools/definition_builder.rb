@@ -94,13 +94,27 @@ module Tools
       }
     ].freeze
 
-    def initialize(agent:)
+    SEND_MESSAGE_TOOL = {
+      name: "send_message",
+      description: "Send a message to the user via their Telegram chat. Use this in background processing mode to notify the user about important events. Only send messages worth interrupting the user for.",
+      input_schema: {
+        "type" => "object",
+        "properties" => {
+          "text" => { "type" => "string", "description" => "The message text to send to the user" }
+        },
+        "required" => ["text"]
+      }
+    }.freeze
+
+    def initialize(agent:, conversation: nil)
       @agent = agent
+      @conversation = conversation
     end
 
     def call
       tools = @agent.enabled_tools.map(&:to_anthropic_tool)
       tools.concat(BUILTIN_TOOLS)
+      tools << SEND_MESSAGE_TOOL if @conversation&.background?
       tools.presence
     end
   end

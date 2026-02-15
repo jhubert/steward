@@ -60,4 +60,37 @@ class AgentTest < ActiveSupport::TestCase
     assert_equal 1, fellows.count
     assert_equal users(:bob), fellows.first.user
   end
+
+  test 'trigger creates background conversation and message and enqueues job' do
+    agent = agents(:jennifer)
+    user = users(:alice)
+
+    message = nil
+    assert_difference 'Conversation.count', 1 do
+      assert_difference 'Message.count', 1 do
+        message = agent.trigger(user: user, content: 'New email from bob@example.com')
+      end
+    end
+
+    assert_equal 'user', message.role
+    assert_equal 'New email from bob@example.com', message.content
+    assert_equal 'trigger', message.metadata['source']
+
+    conversation = message.conversation
+    assert_equal 'background', conversation.channel
+    assert_equal "background:#{agent.id}:#{user.id}", conversation.external_thread_key
+    assert_equal agent, conversation.agent
+    assert_equal user, conversation.user
+  end
+
+  test 'trigger reuses existing background conversation' do
+    agent = agents(:jennifer)
+    user = users(:alice)
+
+    agent.trigger(user: user, content: 'First event')
+
+    assert_no_difference 'Conversation.count' do
+      agent.trigger(user: user, content: 'Second event')
+    end
+  end
 end

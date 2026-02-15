@@ -58,6 +58,10 @@ class Conversation < ApplicationRecord
     s.advance_summary!(new_summary + gap_notice, unsummarized.last.id)
   end
 
+  def background?
+    channel == "background"
+  end
+
   # Find or create a conversation for a given channel and external key.
   def self.find_or_start(user:, agent:, channel:, external_thread_key:)
     find_or_create_by!(

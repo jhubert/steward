@@ -37,6 +37,37 @@ class Tools::DefinitionBuilderTest < ActiveSupport::TestCase
     assert_not_includes names, 'send_invoice'
   end
 
+  test 'does not include send_message for normal conversations' do
+    conversation = conversations(:alice_telegram)
+    builder = Tools::DefinitionBuilder.new(agent: agents(:steward), conversation: conversation)
+    definitions = builder.call
+
+    names = definitions.map { |d| d[:name] }
+    assert_not_includes names, 'send_message'
+  end
+
+  test 'does not include send_message when no conversation given' do
+    builder = Tools::DefinitionBuilder.new(agent: agents(:jennifer))
+    definitions = builder.call
+
+    names = definitions.map { |d| d[:name] }
+    assert_not_includes names, 'send_message'
+  end
+
+  test 'includes send_message for background conversations' do
+    bg_conversation = Conversation.find_or_start(
+      user: users(:alice),
+      agent: agents(:jennifer),
+      channel: "background",
+      external_thread_key: "background:test"
+    )
+    builder = Tools::DefinitionBuilder.new(agent: agents(:jennifer), conversation: bg_conversation)
+    definitions = builder.call
+
+    names = definitions.map { |d| d[:name] }
+    assert_includes names, 'send_message'
+  end
+
   test 'each definition has required Anthropic fields' do
     builder = Tools::DefinitionBuilder.new(agent: agents(:jennifer))
     definitions = builder.call

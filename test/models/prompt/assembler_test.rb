@@ -182,6 +182,52 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     assert_includes history_contents, 'New message after compaction'
   end
 
+  test 'includes background context for background conversations' do
+    bg_conversation = Conversation.find_or_start(
+      user: users(:alice),
+      agent: agents(:steward),
+      channel: "background",
+      external_thread_key: "background:test"
+    )
+    bg_conversation.ensure_state!
+
+    messages = Prompt::Assembler.new(bg_conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Background Processing Mode'
+    assert_includes system_content, 'send_message'
+    assert_includes system_content, 'NOT delivered to anyone'
+  end
+
+  test 'omits background context for normal conversations' do
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, 'Background Processing Mode'
+  end
+
+  test 'includes send_message capability hint for background conversations' do
+    bg_conversation = Conversation.find_or_start(
+      user: users(:alice),
+      agent: agents(:steward),
+      channel: "background",
+      external_thread_key: "background:cap_test"
+    )
+    bg_conversation.ensure_state!
+
+    messages = Prompt::Assembler.new(bg_conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, '**send_message**'
+  end
+
+  test 'omits send_message capability hint for normal conversations' do
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, '**send_message**'
+  end
+
   test 'date context uses agent timezone setting when configured' do
     agent = @conversation.agent
     agent.update!(settings: agent.settings.merge("timezone" => "Eastern Time (US & Canada)"))

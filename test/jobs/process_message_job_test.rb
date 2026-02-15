@@ -579,6 +579,128 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert state.summarized_through_message_id.present?
   end
 
+  test 'background channel processes message without adapter delivery' do
+    agent = agents(:jennifer)
+    user = users(:alice)
+
+    conversation = Conversation.find_or_start(
+      user: user,
+      agent: agent,
+      channel: "background",
+      external_thread_key: "background:#{agent.id}:#{user.id}"
+    )
+
+    message = conversation.messages.create!(
+      workspace: workspaces(:default),
+      user: user,
+      role: 'user',
+      content: 'New email from bob@example.com'
+    )
+
+    stub_text_response('I will forward this to Alice via Telegram.')
+
+    # Background adapter should never attempt Telegram delivery
+    Adapters::Telegram.expects(:new).never
+
+    assert_difference 'Message.count', 1 do
+      ProcessMessageJob.perform_now(message.id)
+    end
+
+    reply = Message.last
+    assert_equal 'assistant', reply.role
+    assert_equal 'I will forward this to Alice via Telegram.', reply.content
+  end
+
+  test 'send_message delivers to Telegram conversation from background' do
+    agent = agents(:jennifer)
+    user = users(:alice)
+
+    bg_conversation = Conversation.find_or_start(
+      user: user, agent: agent, channel: "background",
+      external_thread_key: "background:#{agent.id}:#{user.id}"
+    )
+    bg_message = bg_conversation.messages.create!(
+      workspace: workspaces(:default), user: user,
+      role: 'user', content: 'New event received'
+    )
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'send_message',
+      tool_id: 'toolu_send',
+      input: { 'text' => 'You have a new event!' }
+    )
+    text_response = build_text_response('Done, notified the user.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    telegram_adapter = stub(send_typing: true, send_reply: true)
+    Adapters::Telegram.stubs(:new).returns(telegram_adapter)
+
+    telegram_conv = conversations(:alice_jennifer)
+    initial_msg_count = telegram_conv.messages.count
+
+    ProcessMessageJob.perform_now(bg_message.id)
+
+    # Message was created in the Telegram conversation
+    assert_equal initial_msg_count + 1, telegram_conv.messages.reload.count
+    sent_msg = telegram_conv.messages.last
+    assert_equal 'assistant', sent_msg.role
+    assert_equal 'You have a new event!', sent_msg.content
+    assert_equal 'background', sent_msg.metadata['source']
+
+    # Adapter was called to deliver
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/delivered/, tool_content[:content])
+  end
+
+  test 'send_message returns error when no Telegram conversation exists' do
+    agent = agents(:steward)
+    user = users(:bob)
+
+    bg_conversation = Conversation.find_or_start(
+      user: user, agent: agent, channel: "background",
+      external_thread_key: "background:#{agent.id}:#{user.id}"
+    )
+    bg_message = bg_conversation.messages.create!(
+      workspace: workspaces(:default), user: user,
+      role: 'user', content: 'Event for bob'
+    )
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'send_message',
+      tool_id: 'toolu_send_fail',
+      input: { 'text' => 'Hello Bob!' }
+    )
+    text_response = build_text_response('Could not deliver message.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(bg_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/No Telegram conversation/, tool_content[:content])
+  end
+
   test 'agents without agent-specific tools still get builtin tools' do
     stub_text_response('Hi there!')
 

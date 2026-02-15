@@ -31,6 +31,7 @@ module Prompt
       parts << conversation_state if has_conversation_state?
       parts << long_term_recall if @incoming_message.present?
       parts << thread_catalog
+      parts << background_context if @conversation.background?
       parts.compact.join("\n\n---\n\n")
     end
 
@@ -71,7 +72,8 @@ module Prompt
       "schedule_task" => "Schedule one-time or recurring tasks (reminders, daily standups, weekly reports). Proactively offer when the user mentions wanting to be reminded, needing recurring check-ins, or setting up routines.",
       "list_scheduled_tasks" => "List active scheduled tasks. Use when the user asks what's scheduled or wants to review their reminders.",
       "cancel_scheduled_task" => "Cancel a scheduled task. Use when the user wants to stop a reminder or recurring task.",
-      "github" => "Access GitHub via the `gh` CLI. Can list/view/create PRs, issues, releases, search code, and call the GitHub API. Pass the full subcommand without the `gh` prefix (e.g. `pr list --repo owner/repo`)."
+      "github" => "Access GitHub via the `gh` CLI. Can list/view/create PRs, issues, releases, search code, and call the GitHub API. Pass the full subcommand without the `gh` prefix (e.g. `pr list --repo owner/repo`).",
+      "send_message" => "Send a message to the user via Telegram. Only available in background processing mode. Use sparingly — only for events important enough to interrupt the user."
     }.freeze
 
     def capabilities_context
@@ -89,6 +91,10 @@ module Prompt
       # Builtin tools with hints (skip save_note/read_notes/google_setup — the LLM already understands those from the schema)
       %w[download_file schedule_task list_scheduled_tasks cancel_scheduled_task].each do |name|
         lines << "- **#{name}**: #{CAPABILITY_HINTS[name]}"
+      end
+
+      if @conversation.background?
+        lines << "- **send_message**: #{CAPABILITY_HINTS['send_message']}"
       end
 
       lines.join("\n")
@@ -171,6 +177,7 @@ module Prompt
         user: @conversation.user,
         agent: @conversation.agent
       ).where.not(id: @conversation.id)
+       .where.not(channel: "background")
        .where.not(title: nil)
        .order(updated_at: :desc)
        .limit(10)
@@ -179,6 +186,15 @@ module Prompt
 
       lines = other_threads.map { |c| "- #{c.title}" }
       "## Other Conversation Threads\n#{lines.join("\n")}"
+    end
+
+    def background_context
+      "## Background Processing Mode\n" \
+      "You are processing a server-side event, NOT a live user chat. " \
+      "Your text replies are logged but NOT delivered to anyone. " \
+      "To notify the user, call the `send_message` tool. " \
+      "Only send a message if the event is important enough to warrant interrupting them — " \
+      "otherwise, take any needed actions (save notes, use tools) silently."
     end
 
     def build_history

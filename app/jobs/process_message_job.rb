@@ -65,7 +65,7 @@ class ProcessMessageJob < ApplicationJob
     messages << { role: 'user', content: message.content }
 
     # Get tool definitions (nil if agent has no tools)
-    tool_definitions = Tools::DefinitionBuilder.new(agent: agent).call
+    tool_definitions = Tools::DefinitionBuilder.new(agent: agent, conversation: conversation).call
 
     # Tool use loop
     total_input_tokens = 0
@@ -198,6 +198,8 @@ class ProcessMessageJob < ApplicationJob
     case conversation.channel
     when 'telegram'
       Adapters::Telegram.new(bot_token: conversation.agent.telegram_bot_token)
+    when 'background'
+      Adapters::Background.new
     else
       raise "Unknown channel: #{conversation.channel}"
     end
@@ -278,6 +280,8 @@ class ProcessMessageJob < ApplicationJob
       execute_list_scheduled_tasks(conversation)
     when "cancel_scheduled_task"
       execute_cancel_scheduled_task(input, conversation)
+    when "send_message"
+      execute_send_message(input, conversation)
     end
   end
 
@@ -425,6 +429,41 @@ class ProcessMessageJob < ApplicationJob
       virtual_result("download_file", "File downloaded successfully.\nPath: #{result.path}\nSize: #{result.size} bytes", input: url.truncate(200))
     else
       virtual_result("download_file", "Download failed: #{result.error}", input: url.truncate(200))
+    end
+  end
+
+  def execute_send_message(input, conversation)
+    text = input["text"].to_s.strip
+
+    if text.blank?
+      return virtual_result("send_message", "Error: 'text' parameter is required.")
+    end
+
+    unless conversation.background?
+      return virtual_result("send_message", "Error: send_message is only available in background processing mode.")
+    end
+
+    agent = conversation.agent
+    user = conversation.user
+
+    telegram_conv = user.conversations.find_by(agent: agent, channel: "telegram")
+    unless telegram_conv
+      return virtual_result("send_message", "Error: No Telegram conversation found for this user and agent. The user hasn't talked to this agent on Telegram yet.")
+    end
+
+    msg = telegram_conv.messages.create!(
+      workspace: conversation.workspace,
+      user: user,
+      role: "assistant",
+      content: text,
+      metadata: { source: "background", background_conversation_id: conversation.id }
+    )
+
+    begin
+      Adapters::Telegram.new(bot_token: agent.telegram_bot_token).send_reply(telegram_conv, msg)
+      virtual_result("send_message", "Message delivered to user via Telegram.", input: text.truncate(200))
+    rescue Adapters::DeliveryError => e
+      virtual_result("send_message", "Message saved but delivery failed: #{e.message}", input: text.truncate(200))
     end
   end
 

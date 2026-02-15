@@ -7,7 +7,7 @@ class RunScheduledTaskJobTest < ActiveSupport::TestCase
     as_workspace(:default)
   end
 
-  test "creates synthetic message and enqueues ProcessMessageJob" do
+  test "triggers background conversation and enqueues ProcessMessageJob" do
     task = scheduled_tasks(:alice_daily_standup)
     task.update_columns(next_run_at: 1.minute.ago)
 
@@ -21,8 +21,8 @@ class RunScheduledTaskJobTest < ActiveSupport::TestCase
     assert_equal "user", message.role
     assert_match(/\[Scheduled Task\]/, message.content)
     assert_match(/standup/, message.content)
-    assert_equal "scheduled_task", message.metadata["source"]
-    assert_equal task.id, message.metadata["scheduled_task_id"]
+    assert_equal "trigger", message.metadata["source"]
+    assert_equal "background", message.conversation.channel
   end
 
   test "advances recurring task after firing" do
