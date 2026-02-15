@@ -1,0 +1,508 @@
+<% content_for(:title, "Steward — Your AI Hiring Agency") %>
+<% content_for(:head) do %>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --bg-card: #12121a;
+    --bg-card-hover: #1a1a26;
+    --border: #1e1e2e;
+    --text: #e4e4ef;
+    --text-muted: #8888a0;
+    --accent: #6c63ff;
+    --accent-glow: rgba(108, 99, 255, 0.15);
+    --green: #34d399;
+    --amber: #fbbf24;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  .landing { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+
+  /* --- Header --- */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 0;
+  }
+  .logo {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .logo span { color: var(--accent); }
+  .header-links a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 14px;
+    margin-left: 24px;
+    transition: color 0.2s;
+  }
+  .header-links a:hover { color: var(--text); }
+
+  /* --- Hero --- */
+  .hero {
+    text-align: center;
+    padding: 80px 0 60px;
+  }
+  .hero-badge {
+    display: inline-block;
+    background: var(--accent-glow);
+    border: 1px solid rgba(108, 99, 255, 0.3);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 16px;
+    border-radius: 100px;
+    margin-bottom: 24px;
+    letter-spacing: 0.3px;
+  }
+  .hero h1 {
+    font-size: clamp(36px, 6vw, 56px);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+    margin-bottom: 20px;
+  }
+  .hero h1 em {
+    font-style: normal;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero p {
+    font-size: 18px;
+    color: var(--text-muted);
+    max-width: 560px;
+    margin: 0 auto;
+    line-height: 1.7;
+  }
+
+  /* --- Agent cards --- */
+  .agents-section {
+    padding: 40px 0 60px;
+  }
+  .agents-section h2 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .agent-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .agent-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  }
+  .agent-card:hover {
+    background: var(--bg-card-hover);
+    border-color: rgba(108, 99, 255, 0.3);
+    transform: translateY(-2px);
+  }
+  .agent-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .agent-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .agent-name {
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .agent-role {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+  .agent-desc {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .agent-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--green);
+    margin-top: 12px;
+  }
+  .agent-status .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* --- How it works --- */
+  .how-section {
+    padding: 60px 0;
+    border-top: 1px solid var(--border);
+  }
+  .how-section h2 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 32px;
+  }
+  .step {
+    text-align: center;
+    padding: 0 8px;
+  }
+  .step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: var(--accent-glow);
+    border: 1px solid rgba(108, 99, 255, 0.3);
+    color: var(--accent);
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+  }
+  .step h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .step p {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  /* --- Features --- */
+  .features-section {
+    padding: 60px 0;
+    border-top: 1px solid var(--border);
+  }
+  .features-section h2 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .feature {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .feature-icon {
+    font-size: 24px;
+    margin-bottom: 12px;
+  }
+  .feature h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .feature p {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  /* --- Terminal --- */
+  .terminal-section {
+    padding: 60px 0;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  .terminal-section h2 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 12px;
+  }
+  .terminal-section > p {
+    color: var(--text-muted);
+    font-size: 15px;
+    margin-bottom: 32px;
+  }
+  .terminal {
+    background: #0d0d14;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    text-align: left;
+    overflow: hidden;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .terminal-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid var(--border);
+  }
+  .terminal-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #333;
+  }
+  .terminal-dot:nth-child(1) { background: #ff5f57; }
+  .terminal-dot:nth-child(2) { background: #febc2e; }
+  .terminal-dot:nth-child(3) { background: #28c840; }
+  .terminal-body {
+    padding: 20px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .terminal-body .prompt { color: var(--accent); }
+  .terminal-body .cmd { color: var(--text); }
+  .terminal-body .output { color: var(--text-muted); }
+  .terminal-body .success { color: var(--green); }
+
+  /* --- Footer --- */
+  footer {
+    padding: 40px 0;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  footer p {
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  footer a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  footer a:hover { text-decoration: underline; }
+</style>
+<% end %>
+
+<div class="landing">
+  <header>
+    <a href="/" class="logo"><span>S</span>teward</a>
+    <div class="header-links">
+      <a href="https://github.com/jhubert/steward">GitHub</a>
+      <a href="/admin">Admin</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-badge">Now hiring AI agents</div>
+    <h1>Your personal<br><em>AI hiring agency</em></h1>
+    <p>Steward finds, hires, and manages AI agents that actually do things for you. Each agent has its own personality, tools, and expertise — and they all report to you on Telegram.</p>
+  </section>
+
+  <section class="agents-section">
+    <h2>Meet the team</h2>
+    <div class="agent-grid">
+      <div class="agent-card">
+        <div class="agent-header">
+          <div class="agent-avatar" style="background: linear-gradient(135deg, #6c63ff, #a78bfa);">&#x1f3e2;</div>
+          <div>
+            <div class="agent-name">Steward</div>
+            <div class="agent-role">Reception Desk</div>
+          </div>
+        </div>
+        <div class="agent-desc">The front door. Handles onboarding, discovers what you need, and finds the right agent for the job.</div>
+        <div class="agent-status"><span class="dot"></span> Online</div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-header">
+          <div class="agent-avatar" style="background: linear-gradient(135deg, #f59e0b, #ef4444);">&#x1f4bc;</div>
+          <div>
+            <div class="agent-name">Executive Assistant</div>
+            <div class="agent-role">Principal-mode Agent</div>
+          </div>
+        </div>
+        <div class="agent-desc">Manages calendars, checks email, handles scheduling, and keeps multiple principals in the loop.</div>
+        <div class="agent-status"><span class="dot"></span> Online</div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-header">
+          <div class="agent-avatar" style="background: linear-gradient(135deg, #10b981, #059669);">&#x1f50d;</div>
+          <div>
+            <div class="agent-name">Researcher</div>
+            <div class="agent-role">Deep Dive Specialist</div>
+          </div>
+        </div>
+        <div class="agent-desc">Digs into topics, summarizes findings, and delivers research briefs straight to your chat.</div>
+        <div class="agent-status"><span class="dot"></span> Online</div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-header">
+          <div class="agent-avatar" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">&#x2696;&#xfe0f;</div>
+          <div>
+            <div class="agent-name">Lawyer</div>
+            <div class="agent-role">Contract & Compliance</div>
+          </div>
+        </div>
+        <div class="agent-desc">Reviews contracts, explains legal terms, and flags issues before you sign on the dotted line.</div>
+        <div class="agent-status"><span class="dot"></span> Online</div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-header">
+          <div class="agent-avatar" style="background: linear-gradient(135deg, #ec4899, #be185d);">&#x1f1e8;&#x1f1e6;</div>
+          <div>
+            <div class="agent-name">Canadian Friend</div>
+            <div class="agent-role">Cultural Consultant</div>
+          </div>
+        </div>
+        <div class="agent-desc">Answers questions about Canada with warmth, humour, and an encyclopedic knowledge of poutine.</div>
+        <div class="agent-status"><span class="dot"></span> Online</div>
+      </div>
+
+      <div class="agent-card">
+        <div class="agent-header">
+          <div class="agent-avatar" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9);">&#x2699;&#xfe0f;</div>
+          <div>
+            <div class="agent-name">Your Next Hire</div>
+            <div class="agent-role">Coming Soon</div>
+          </div>
+        </div>
+        <div class="agent-desc">Define a personality, give it tools, register a Telegram bot. Your agent is live in minutes.</div>
+        <div class="agent-status" style="color: var(--amber);"><span class="dot" style="background: var(--amber);"></span> Awaiting hire</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="how-section">
+    <h2>How hiring works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <h3>Define the role</h3>
+        <p>Write a system prompt that describes who the agent is, what it's good at, and how it should behave.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <h3>Equip with tools</h3>
+        <p>Give it access to scripts, APIs, and services. Tools run in a safe sandbox with encrypted credentials.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <h3>Open the office</h3>
+        <p>Register a Telegram bot and set the webhook. Your agent is live and ready for conversations.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="features-section">
+    <h2>What makes Steward different</h2>
+    <div class="feature-grid">
+      <div class="feature">
+        <div class="feature-icon">&#x1f9e0;</div>
+        <h3>Layered memory</h3>
+        <p>Prompts are assembled from five memory layers — not just chat history. Agents remember what matters.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">&#x1f6e0;&#xfe0f;</div>
+        <h3>Real tool execution</h3>
+        <p>Agents run actual scripts via a safe subprocess executor. No shell, no injection, full audit trail.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">&#x23f0;</div>
+        <h3>Scheduled tasks</h3>
+        <p>Agents can schedule recurring work. Direct execution mode skips the LLM for deterministic scripts.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">&#x1f465;</div>
+        <h3>Multi-principal</h3>
+        <p>One agent can serve multiple people with cross-user awareness and discretion boundaries.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">&#x1f512;</div>
+        <h3>Tenant isolation</h3>
+        <p>Every query is scoped by workspace and user. No data leaks between users or agents.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">&#x1f4e6;</div>
+        <h3>Composable skills</h3>
+        <p>Drop a SKILL.md in a folder. Agents activate skills per-conversation as needed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="terminal-section">
+    <h2>Hire in minutes</h2>
+    <p>A new agent is a database record, a Telegram bot token, and one rake task.</p>
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="terminal-dot"></div>
+        <div class="terminal-dot"></div>
+        <div class="terminal-dot"></div>
+      </div>
+      <div class="terminal-body">
+        <div><span class="prompt">$</span> <span class="cmd">bin/rails runner 'Agent.create!(</span></div>
+        <div><span class="cmd">&nbsp;&nbsp;workspace: Workspace.first,</span></div>
+        <div><span class="cmd">&nbsp;&nbsp;name: "Researcher",</span></div>
+        <div><span class="cmd">&nbsp;&nbsp;system_prompt: "You are a research assistant...",</span></div>
+        <div><span class="cmd">&nbsp;&nbsp;settings: { "telegram_bot_token" => ENV["TOKEN"] }</span></div>
+        <div><span class="cmd">)'</span></div>
+        <br>
+        <div><span class="prompt">$</span> <span class="cmd">bin/rails telegram:set_webhook[Researcher]</span></div>
+        <div><span class="success">&#x2713; Webhook set for Researcher</span></div>
+        <div><span class="success">&nbsp;&nbsp;https://steward.example.com/webhooks/telegram/3</span></div>
+        <br>
+        <div><span class="output"># That's it. Researcher is live on Telegram.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Built with Rails, Claude, and stubbornness. <a href="https://github.com/jhubert/steward">View on GitHub</a></p>
+  </footer>
+</div>
