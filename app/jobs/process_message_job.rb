@@ -342,6 +342,8 @@ class ProcessMessageJob < ApplicationJob
     run_at_str = input["run_at"].to_s.strip
     interval = input["interval"].to_s.strip.presence || "once"
     custom_seconds = input["interval_seconds"]
+    tool_name = input["tool_name"].to_s.strip.presence
+    tool_input = input["tool_input"].is_a?(Hash) ? input["tool_input"] : {}
 
     if description.blank? || run_at_str.blank?
       return virtual_result("schedule_task", "Error: 'description' and 'run_at' are required.")
@@ -366,29 +368,48 @@ class ProcessMessageJob < ApplicationJob
       return virtual_result("schedule_task", "Error: 'interval_seconds' is required for custom intervals and must be positive.")
     end
 
+    # Resolve agent_tool for direct execution
+    agent_tool = nil
+    if tool_name
+      virtual_names = Tools::DefinitionBuilder::BUILTIN_TOOLS.map { |t| t[:name] } + [Tools::DefinitionBuilder::SEND_MESSAGE_TOOL[:name]]
+      if virtual_names.include?(tool_name)
+        return virtual_result("schedule_task", "Error: '#{tool_name}' is a built-in tool and cannot be scheduled for direct execution.")
+      end
+
+      agent_tool = conversation.agent.enabled_tools.find_by(name: tool_name)
+      unless agent_tool
+        return virtual_result("schedule_task", "Error: Unknown tool '#{tool_name}'. Only enabled agent tools can be scheduled.")
+      end
+    end
+
     task = ScheduledTask.create!(
       workspace: conversation.workspace,
       agent: conversation.agent,
+      user: conversation.user,
       conversation: conversation,
       description: description,
       next_run_at: run_at,
-      interval_seconds: interval_seconds
+      interval_seconds: interval_seconds,
+      agent_tool: agent_tool,
+      tool_input: agent_tool ? tool_input : {}
     )
 
     schedule_desc = interval_seconds ? "recurring (#{task.interval_description})" : "one-time"
-    virtual_result("schedule_task", "Task scheduled (ID: #{task.id}).\nDescription: #{description}\nNext run: #{run_at.iso8601}\nType: #{schedule_desc}", input: description.truncate(200))
+    mode = agent_tool ? " [direct: #{agent_tool.name}]" : ""
+    virtual_result("schedule_task", "Task scheduled (ID: #{task.id}).\nDescription: #{description}\nNext run: #{run_at.iso8601}\nType: #{schedule_desc}#{mode}", input: description.truncate(200))
   end
 
   def execute_list_scheduled_tasks(conversation)
-    tasks = conversation.scheduled_tasks.order(:next_run_at)
+    tasks = ScheduledTask.where(agent: conversation.agent, user: conversation.user).order(:next_run_at)
 
     if tasks.empty?
-      return virtual_result("list_scheduled_tasks", "No scheduled tasks for this conversation.")
+      return virtual_result("list_scheduled_tasks", "No scheduled tasks found.")
     end
 
     lines = tasks.map do |t|
       status = t.enabled? ? "active" : "disabled"
-      "- [#{t.id}] #{t.description} | Next: #{t.next_run_at&.iso8601 || 'N/A'} | #{t.interval_description} | #{status}"
+      mode = t.direct_execution? ? " [direct: #{t.agent_tool.name}]" : ""
+      "- [#{t.id}] #{t.description} | Next: #{t.next_run_at&.iso8601 || 'N/A'} | #{t.interval_description} | #{status}#{mode}"
     end
 
     virtual_result("list_scheduled_tasks", "Scheduled tasks:\n#{lines.join("\n")}")
@@ -401,10 +422,10 @@ class ProcessMessageJob < ApplicationJob
       return virtual_result("cancel_scheduled_task", "Error: 'task_id' is required.")
     end
 
-    task = conversation.scheduled_tasks.find_by(id: task_id)
+    task = ScheduledTask.find_by(id: task_id, agent: conversation.agent, user: conversation.user)
 
     unless task
-      return virtual_result("cancel_scheduled_task", "Error: Task ##{task_id} not found in this conversation.")
+      return virtual_result("cancel_scheduled_task", "Error: Task ##{task_id} not found.")
     end
 
     task.cancel!
@@ -477,15 +498,7 @@ class ProcessMessageJob < ApplicationJob
   end
 
   def build_principal_env(agent, conversation)
-    principal = agent.agent_principals.find_by(user: conversation.user)
-    return {} unless principal&.credentials&.key?("gog_keyring_password")
-
-    user_gog_dir = Rails.root.join("data", "gog", conversation.user.id.to_s).to_s
-    {
-      "XDG_CONFIG_HOME" => user_gog_dir,
-      "GOG_KEYRING_PASSWORD" => principal.credentials["gog_keyring_password"],
-      "GOG_KEYRING_BACKEND" => "file"
-    }
+    agent.principal_env_for(conversation.user)
   end
 
   def extract_text(content_blocks)

@@ -2,11 +2,18 @@ class ScheduledTask < ApplicationRecord
   include WorkspaceScoped
 
   belongs_to :agent
-  belongs_to :conversation
+  belongs_to :user
+  belongs_to :conversation, optional: true
+  belongs_to :agent_tool, optional: true
 
   validates :description, presence: true
   validates :next_run_at, presence: true
   validates :interval_seconds, numericality: { greater_than_or_equal_to: 60 }, allow_nil: true
+  validate :agent_tool_belongs_to_same_agent
+
+  def direct_execution?
+    agent_tool_id.present?
+  end
 
   scope :enabled, -> { where(enabled: true) }
   scope :due, -> { enabled.where("next_run_at <= ?", Time.current) }
@@ -42,5 +49,14 @@ class ScheduledTask < ApplicationRecord
     when 604_800 then "weekly"
     else "every #{interval_seconds} seconds"
     end
+  end
+
+  private
+
+  def agent_tool_belongs_to_same_agent
+    return unless agent_tool_id.present?
+    return if agent_tool&.agent_id == agent_id
+
+    errors.add(:agent_tool, "must belong to the same agent")
   end
 end

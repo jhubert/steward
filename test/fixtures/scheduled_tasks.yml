@@ -1,6 +1,7 @@
 alice_daily_standup:
   workspace: default
   agent: jennifer
+  user: alice
   conversation: alice_jennifer
   description: "Daily standup reminder: review goals and priorities for today"
   next_run_at: <%= 1.hour.from_now.iso8601 %>
@@ -8,10 +9,12 @@ alice_daily_standup:
   enabled: true
   last_run_at: <%= 1.day.ago.iso8601 %>
   metadata: {}
+  tool_input: {}
 
 alice_one_time_reminder:
   workspace: default
   agent: jennifer
+  user: alice
   conversation: alice_jennifer
   description: "Remind Alice about the board meeting preparation"
   next_run_at: <%= 2.hours.from_now.iso8601 %>
@@ -19,10 +22,12 @@ alice_one_time_reminder:
   enabled: true
   last_run_at:
   metadata: {}
+  tool_input: {}
 
 bob_disabled_task:
   workspace: default
   agent: jennifer
+  user: bob
   conversation: bob_jennifer
   description: "Weekly report compilation"
   next_run_at: <%= 1.day.from_now.iso8601 %>
@@ -30,3 +35,19 @@ bob_disabled_task:
   enabled: false
   last_run_at: <%= 1.week.ago.iso8601 %>
   metadata: {}
+  tool_input: {}
+
+alice_direct_mail_check:
+  workspace: default
+  agent: jennifer
+  user: alice
+  conversation: alice_jennifer
+  agent_tool: jennifer_scheduling
+  description: "Check for new mail"
+  next_run_at: <%= 1.hour.from_now.iso8601 %>
+  interval_seconds: 600
+  enabled: true
+  last_run_at: <%= 10.minutes.ago.iso8601 %>
+  metadata: {}
+  tool_input:
+    attendees: "alice@example.com"

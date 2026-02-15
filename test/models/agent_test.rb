@@ -83,6 +83,30 @@ class AgentTest < ActiveSupport::TestCase
     assert_equal user, conversation.user
   end
 
+  test 'principal_env_for returns empty hash when no credentials' do
+    agent = agents(:jennifer)
+    env = agent.principal_env_for(users(:alice))
+    assert_equal({}, env)
+  end
+
+  test 'principal_env_for returns GOG env when credentials present' do
+    principal = agent_principals(:jennifer_alice)
+    principal.update!(credentials: { "gog_keyring_password" => "test-pass-123" })
+
+    agent = agents(:jennifer)
+    env = agent.principal_env_for(users(:alice))
+
+    assert_equal "file", env["GOG_KEYRING_BACKEND"]
+    assert_equal "test-pass-123", env["GOG_KEYRING_PASSWORD"]
+    assert_match %r{data/gog/#{users(:alice).id}}, env["XDG_CONFIG_HOME"]
+  end
+
+  test 'principal_env_for returns empty hash for non-principal' do
+    agent = agents(:steward)
+    env = agent.principal_env_for(users(:alice))
+    assert_equal({}, env)
+  end
+
   test 'trigger reuses existing background conversation' do
     agent = agents(:jennifer)
     user = users(:alice)

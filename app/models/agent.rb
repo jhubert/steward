@@ -87,6 +87,18 @@ class Agent < ApplicationRecord
     message
   end
 
+  def principal_env_for(user)
+    principal = agent_principals.find_by(user: user)
+    return {} unless principal&.credentials&.key?("gog_keyring_password")
+
+    user_gog_dir = Rails.root.join("data", "gog", user.id.to_s).to_s
+    {
+      "XDG_CONFIG_HOME" => user_gog_dir,
+      "GOG_KEYRING_PASSWORD" => principal.credentials["gog_keyring_password"],
+      "GOG_KEYRING_BACKEND" => "file"
+    }
+  end
+
   def register_telegram_webhook!
     token = telegram_bot_token
     return { ok: false, description: "No bot token configured" } unless token.present?

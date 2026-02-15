@@ -2,5 +2,5 @@ class ToolExecution < ApplicationRecord
   include WorkspaceScoped
 
   belongs_to :agent_tool
-  belongs_to :conversation
+  belongs_to :conversation, optional: true
 end

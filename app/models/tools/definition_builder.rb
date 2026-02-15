@@ -57,7 +57,7 @@ module Tools
       },
       {
         name: "schedule_task",
-        description: "Schedule a task to run at a specific time, optionally recurring. The task will inject a message into this conversation and trigger a response.",
+        description: "Schedule a task to run at a specific time, optionally recurring. Without tool_name, the task triggers an LLM conversation. With tool_name, the tool runs directly and the LLM is only invoked if there's output to act on.",
         input_schema: {
           "type" => "object",
           "properties" => {
@@ -68,14 +68,16 @@ module Tools
               "enum" => ["once", "hourly", "daily", "weekly", "custom"],
               "description" => "How often to repeat (default: once)"
             },
-            "interval_seconds" => { "type" => "integer", "description" => "Custom repeat interval in seconds (required when interval is 'custom')" }
+            "interval_seconds" => { "type" => "integer", "description" => "Custom repeat interval in seconds (required when interval is 'custom')" },
+            "tool_name" => { "type" => "string", "description" => "Name of an agent tool to execute directly (skips LLM for the execution step)" },
+            "tool_input" => { "type" => "object", "description" => "Input parameters for the tool (used with tool_name)" }
           },
           "required" => ["description", "run_at"]
         }
       },
       {
         name: "list_scheduled_tasks",
-        description: "List all scheduled tasks for the current conversation.",
+        description: "List all scheduled tasks for the current user and agent.",
         input_schema: {
           "type" => "object",
           "properties" => {}

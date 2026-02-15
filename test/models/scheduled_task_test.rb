@@ -92,7 +92,7 @@ class ScheduledTaskTest < ActiveSupport::TestCase
     task = ScheduledTask.new(
       workspace: workspaces(:default),
       agent: agents(:jennifer),
-      conversation: conversations(:alice_jennifer),
+      user: users(:alice),
       next_run_at: 1.hour.from_now
     )
     assert_not task.valid?
@@ -134,5 +134,32 @@ class ScheduledTaskTest < ActiveSupport::TestCase
     assert_includes enabled, scheduled_tasks(:alice_daily_standup)
     assert_includes enabled, scheduled_tasks(:alice_one_time_reminder)
     assert_not_includes enabled, scheduled_tasks(:bob_disabled_task)
+  end
+
+  test "direct_execution? returns true when agent_tool is set" do
+    task = scheduled_tasks(:alice_direct_mail_check)
+    assert task.direct_execution?
+  end
+
+  test "direct_execution? returns false when agent_tool is nil" do
+    task = scheduled_tasks(:alice_daily_standup)
+    assert_not task.direct_execution?
+  end
+
+  test "validates agent_tool belongs to same agent" do
+    task = scheduled_tasks(:alice_daily_standup)
+    # steward agent has no tools, so use a tool from jennifer but assign to steward
+    other_agent = agents(:steward)
+    task.agent = other_agent
+    task.agent_tool = agent_tools(:jennifer_scheduling)
+
+    assert_not task.valid?
+    assert_includes task.errors[:agent_tool], "must belong to the same agent"
+  end
+
+  test "allows agent_tool from the same agent" do
+    task = scheduled_tasks(:alice_direct_mail_check)
+    assert_equal task.agent, task.agent_tool.agent
+    assert task.valid?
   end
 end
