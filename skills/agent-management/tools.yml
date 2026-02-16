@@ -1,0 +1,16 @@
+tools:
+  - name: manage_agents
+    description: "Manage Steward platform agents and their skills. Actions: list_agents, list_skills, enable_skill, disable_skill, create_agent."
+    input_schema:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          description: "The action to perform: list_agents, list_skills, enable_skill, disable_skill, create_agent"
+        params:
+          type: string
+          description: 'JSON parameters for the action. For enable_skill/disable_skill: {"agent": "Name", "skill": "skill_name"}. For create_agent: {"name": "Name", "system_prompt": "...", "telegram_bot_token": "optional"}'
+    command_template: "ruby scripts/manage.rb {action} {params}"
+    timeout_seconds: 30

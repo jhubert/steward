@@ -36,6 +36,20 @@ class ScheduledTask < ApplicationRecord
     end
   end
 
+  FAILURE_NOTIFY_THRESHOLD = 3
+
+  def record_success!
+    update!(consecutive_failures: 0) if consecutive_failures > 0
+  end
+
+  def record_failure!
+    increment!(:consecutive_failures)
+  end
+
+  def failure_threshold_reached?
+    consecutive_failures >= FAILURE_NOTIFY_THRESHOLD
+  end
+
   def cancel!
     update!(enabled: false)
   end

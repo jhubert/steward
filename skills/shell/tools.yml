@@ -1,0 +1,14 @@
+tools:
+  - name: shell
+    description: "Execute a shell command on the server via bash. Use for: running scripts, file reading/writing, curl requests, git operations (non-destructive), gog (Google Workspace CLI), python/node scripts, file system navigation, and general system tasks. Safety guardrails block destructive operations (rm -rf, system shutdown, credential access, destructive git). If a command is blocked, inform the user."
+    input_schema:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: "The shell command to execute (runs via bash -c)"
+    command_template: "bash /srv/steward/skills/shell/safe-shell.sh {command}"
+    working_directory: "/srv/steward"
+    timeout_seconds: 120

@@ -1,0 +1,8 @@
+tools:
+  - name: check_email
+    description: "Check for new unread email via gog"
+    input_schema:
+      type: object
+      properties: {}
+    command_template: "bash check.sh"
+    timeout_seconds: 30

@@ -1,0 +1,8 @@
+tools:
+  - name: current_time
+    description: "Returns the current date and time on the server"
+    input_schema:
+      type: object
+      properties: {}
+    command_template: "date"
+    timeout_seconds: 5

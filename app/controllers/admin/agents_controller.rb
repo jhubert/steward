@@ -1,6 +1,6 @@
 module Admin
   class AgentsController < BaseController
-    before_action :set_agent, only: [:show, :edit, :update]
+    before_action :set_agent, only: [:show, :edit, :update, :enable_skill, :disable_skill]
 
     def index
       @agents = Agent.all.order(:name)
@@ -64,6 +64,20 @@ module Admin
       else
         render :edit, status: :unprocessable_entity
       end
+    end
+
+    def enable_skill
+      @agent.enable_skill!(params[:skill_name])
+      redirect_to admin_agent_path(@agent), notice: "Skill '#{params[:skill_name]}' enabled."
+    rescue ArgumentError => e
+      redirect_to admin_agent_path(@agent), alert: e.message
+    end
+
+    def disable_skill
+      @agent.disable_skill!(params[:skill_name])
+      redirect_to admin_agent_path(@agent), notice: "Skill '#{params[:skill_name]}' disabled."
+    rescue ArgumentError => e
+      redirect_to admin_agent_path(@agent), alert: e.message
     end
 
     private

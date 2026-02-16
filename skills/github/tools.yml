@@ -1,0 +1,13 @@
+tools:
+  - name: github
+    description: "Run GitHub CLI commands"
+    input_schema:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: "The gh subcommand to run (without the 'gh' prefix)"
+    command_template: "ruby run.rb {command}"
+    timeout_seconds: 30

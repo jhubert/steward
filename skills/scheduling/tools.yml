@@ -1,0 +1,30 @@
+tools:
+  - name: find_availability
+    description: >-
+      Find available meeting time slots by checking all calendars for given
+      attendees. Checks work, personal, and family calendars. Skips weekends
+      and respects business hours (9 AM - 5 PM PT). Known attendees: jeremy
+      (3 calendars), bruce (1 calendar), jenn (1 calendar).
+    input_schema:
+      type: object
+      required:
+        - attendees
+        - duration
+      properties:
+        attendees:
+          type: string
+          description: "Comma-separated list of attendee names: jeremy, bruce, jenn"
+        duration:
+          type: string
+          description: "Meeting duration in minutes (e.g. 30, 60)"
+        from_date:
+          type: string
+          description: "Start date: YYYY-MM-DD, today, tomorrow, or +Nd (e.g. +7d). Default: tomorrow"
+        to_date:
+          type: string
+          description: "End date: YYYY-MM-DD, today, tomorrow, or +Nd (e.g. +7d). Default: +7d"
+        timezone:
+          type: string
+          description: "IANA timezone (e.g. America/Vancouver). Default: America/Vancouver"
+    command_template: "python3 scripts/find-availability.py {attendees} --duration {duration} --from {from_date} --to {to_date} --tz {timezone}"
+    timeout_seconds: 60

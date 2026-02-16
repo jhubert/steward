@@ -1,0 +1,13 @@
+tools:
+  - name: http_request
+    description: "Make HTTP requests to external APIs. Supports GET, POST, PUT, PATCH, DELETE. Use this for ad-hoc API calls, OAuth flows, webhooks, or any HTTP interaction not covered by other tools."
+    input_schema:
+      type: object
+      required:
+        - params
+      properties:
+        params:
+          type: string
+          description: 'JSON string with request parameters. Keys: url (required, full URL), method (GET/POST/PUT/PATCH/DELETE, default GET), headers (object of header key-value pairs, e.g. {"Authorization": "Bearer xxx"}), body (string or JSON object for request body), content_type (shorthand for Content-Type header). Example: {"url": "https://api.example.com/data", "method": "POST", "body": {"name": "test"}, "content_type": "application/json"}'
+    command_template: "python3 scripts/http-request.py {params}"
+    timeout_seconds: 30

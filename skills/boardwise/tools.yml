@@ -1,0 +1,26 @@
+tools:
+  - name: boardwise_api
+    description: >-
+      Interact with the Boardwise board portal API. Commands: auth (start OAuth
+      device authorization flow — returns user_code and verification_uri to show
+      the user), auth-poll <device_code> (poll for token after user approves —
+      pass device_code via params), me (get authenticated user info), tools
+      (discover all available API endpoints), list_groups, get_group,
+      list_meetings, get_meeting, create_meeting, create_agenda_item,
+      list_people, list_action_items, create_action_item, list_documents,
+      list_messages, get_message, create_message. Most commands require an org
+      slug. Auth flow: 1) call auth, 2) show user the code/URL, 3) poll with
+      auth-poll until approved, 4) use other commands.
+    input_schema:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: "API command to execute: me, list_groups, get_group, list_meetings, get_meeting, create_meeting, create_agenda_item, list_people, list_action_items, create_action_item, list_documents, list_messages, get_message, create_message, download_document"
+        params:
+          type: string
+          description: 'JSON string of parameters. Common keys: org (org slug, required for most commands), id (for get commands), status (e.g. "upcoming" for meetings), group_id, title, starts_at/ends_at (ISO 8601), location, time_zone, person_ids (JSON array), duration_minutes, description, due_by, assigned_person_ids (JSON array), subject, body. Example: {"org": "888488", "status": "upcoming"} For download_document: {"org": "888488", "id": "<doc_id>", "dest": "/tmp/doc.pdf"}'
+    command_template: "python3 scripts/boardwise-tool.py {command} {params}"
+    timeout_seconds: 30

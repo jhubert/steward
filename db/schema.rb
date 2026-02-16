@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_15_163341) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_16_070458) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -133,6 +133,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_15_163341) do
   create_table "scheduled_tasks", force: :cascade do |t|
     t.bigint "agent_id", null: false
     t.bigint "agent_tool_id"
+    t.integer "consecutive_failures", default: 0, null: false
     t.bigint "conversation_id"
     t.datetime "created_at", null: false
     t.text "description", null: false

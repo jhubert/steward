@@ -107,6 +107,69 @@ class AgentTest < ActiveSupport::TestCase
     assert_equal({}, env)
   end
 
+  # --- Skill management ---
+
+  test 'enable_skill! creates agent tools from skill definitions' do
+    agent = agents(:steward)
+    Skills::Registry.instance.reload!
+
+    assert_difference -> { agent.agent_tools.count }, 3 do
+      agent.enable_skill!('pdf')
+    end
+
+    tool_names = agent.agent_tools.pluck(:name)
+    assert_includes tool_names, 'pdf_extract'
+    assert_includes tool_names, 'pdf_coords'
+    assert_includes tool_names, 'pdf_fill'
+  end
+
+  test 'enable_skill! is idempotent' do
+    agent = agents(:steward)
+    Skills::Registry.instance.reload!
+
+    agent.enable_skill!('github')
+
+    assert_no_difference -> { agent.agent_tools.count } do
+      agent.enable_skill!('github')
+    end
+  end
+
+  test 'enable_skill! raises on unknown skill' do
+    agent = agents(:steward)
+
+    assert_raises(ArgumentError) { agent.enable_skill!('nonexistent') }
+  end
+
+  test 'disable_skill! removes agent tools for that skill' do
+    agent = agents(:steward)
+    Skills::Registry.instance.reload!
+
+    agent.enable_skill!('github')
+    assert agent.agent_tools.exists?(name: 'github')
+
+    agent.disable_skill!('github')
+    assert_not agent.agent_tools.exists?(name: 'github')
+  end
+
+  test 'disable_skill! raises on unknown skill' do
+    agent = agents(:steward)
+
+    assert_raises(ArgumentError) { agent.disable_skill!('nonexistent') }
+  end
+
+  test 'enabled_skill_names returns skills whose tools all exist' do
+    agent = agents(:steward)
+    Skills::Registry.instance.reload!
+
+    agent.enable_skill!('github')
+    agent.enable_skill!('system')
+
+    names = agent.enabled_skill_names
+    assert_includes names, 'github'
+    assert_includes names, 'system'
+    assert_not_includes names, 'pdf'
+  end
+
   test 'trigger reuses existing background conversation' do
     agent = agents(:jennifer)
     user = users(:alice)

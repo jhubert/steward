@@ -59,6 +59,48 @@
   <% end %>
 </div>
 
+<!-- Skills -->
+<div class="card">
+  <h2>Skills</h2>
+  <% registry = Skills::Registry.instance %>
+  <% enabled_skills = @agent.enabled_skill_names %>
+  <% skills_with_tools = registry.all.select { |s| s.tool_definitions.any? }.sort_by(&:name) %>
+  <% if skills_with_tools.any? %>
+    <table>
+      <thead><tr><th>Skill</th><th>Tools</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        <% skills_with_tools.each do |skill| %>
+          <% enabled = enabled_skills.include?(skill.name) %>
+          <tr>
+            <td><strong><%= skill.name %></strong></td>
+            <td><code style="font-size: 12px;"><%= skill.tool_definitions.map { |d| d[:name] }.join(", ") %></code></td>
+            <td>
+              <span class="badge <%= enabled ? 'badge-green' : 'badge-gray' %>">
+                <%= enabled ? "Enabled" : "Disabled" %>
+              </span>
+            </td>
+            <td class="text-right">
+              <% if enabled %>
+                <%= form_with url: disable_skill_admin_agent_path(@agent), method: :post, class: "inline-form" do %>
+                  <%= hidden_field_tag :skill_name, skill.name %>
+                  <button type="submit" class="btn btn-danger btn-sm">Disable</button>
+                <% end %>
+              <% else %>
+                <%= form_with url: enable_skill_admin_agent_path(@agent), method: :post, class: "inline-form" do %>
+                  <%= hidden_field_tag :skill_name, skill.name %>
+                  <button type="submit" class="btn btn-secondary btn-sm">Enable</button>
+                <% end %>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <p class="text-muted">No skills with tools found in the registry.</p>
+  <% end %>
+</div>
+
 <!-- Tools -->
 <div class="card">
   <h2>Tools (<%= @tools.size %>)</h2>

@@ -37,3 +37,6 @@
 __pycache__/
 node_modules/
 
+# Runtime data (credentials, user files)
+/data/
+

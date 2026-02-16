@@ -33,6 +33,30 @@ class Gog::AuthenticatorTest < ActiveSupport::TestCase
     assert_equal 64, @principal.credentials["gog_keyring_password"].length
   end
 
+  test "provision! reuses keyring password from sibling principal" do
+    # Set up a password on jennifer_bob for the same user (alice)
+    # We need a second principal for Alice on a different agent
+    other_agent = agents(:steward)
+    other_principal = AgentPrincipal.create!(
+      workspace: workspaces(:default),
+      agent: other_agent,
+      user: users(:alice),
+      role: "Admin",
+      display_name: "Alice"
+    )
+    other_principal.credentials = { "gog_keyring_password" => "shared_password_123" }
+    other_principal.save!
+
+    FileUtils.stubs(:mkdir_p)
+    FileUtils.stubs(:cp)
+    File.stubs(:exist?).returns(false)
+
+    @authenticator.provision!
+
+    @principal.reload
+    assert_equal "shared_password_123", @principal.credentials["gog_keyring_password"]
+  end
+
   test "provision! is idempotent — does not overwrite existing password" do
     @principal.credentials = { "gog_keyring_password" => "original_password" }
     @principal.save!

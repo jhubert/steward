@@ -47,11 +47,51 @@ class RunScheduledTaskJob < ApplicationJob
       duration_ms: duration_ms
     )
 
+    failed = result.timed_out || (result.exit_code && result.exit_code != 0)
+
+    if failed
+      task.record_failure!
+      if task.failure_threshold_reached?
+        notify_failure_via_telegram(task, result)
+        return
+      end
+    else
+      task.record_success!
+    end
+
     # Trigger LLM if there's output to act on, or if the tool failed
-    if result.stdout.present? || result.timed_out || (result.exit_code && result.exit_code != 0)
+    if result.stdout.present? || failed
       content = build_trigger_content(task, result)
       task.agent.trigger(user: task.user, content: content)
     end
+  end
+
+  def notify_failure_via_telegram(task, result)
+    agent = task.agent
+    user = task.user
+
+    telegram_conv = user.conversations.find_by(agent: agent, channel: "telegram")
+    return unless telegram_conv
+
+    error_detail = result.timed_out ? "timed out" : "exit code #{result.exit_code}"
+    stderr_snippet = result.stderr.to_s.truncate(500)
+    text = "Scheduled task \"#{task.description}\" has failed #{task.consecutive_failures} times in a row (#{error_detail}). " \
+           "I've disabled it to prevent further failures.\n\n" \
+           "Last error: #{stderr_snippet.presence || '(no stderr)'}"
+
+    msg = telegram_conv.messages.create!(
+      workspace: task.workspace,
+      user: user,
+      role: "assistant",
+      content: text,
+      metadata: { source: "scheduled_task_failure", scheduled_task_id: task.id }
+    )
+
+    Adapters::Telegram.new(bot_token: agent.telegram_bot_token).send_reply(telegram_conv, msg)
+    task.cancel!
+  rescue => e
+    Rails.logger.error("[RunScheduledTaskJob] Failed to send failure notification: #{e.message}")
+    task.cancel!
   end
 
   def build_trigger_content(task, result)

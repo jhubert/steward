@@ -21,7 +21,10 @@ module Gog
       FileUtils.mkdir_p(File.join(user_dir, "gog"))
 
       unless configured?
-        password = SecureRandom.hex(32)
+        existing = AgentPrincipal.where(user: @user)
+                                 .where.not(id: @principal.id)
+                                 .find { |ap| ap.credentials.key?("gog_keyring_password") }
+        password = existing&.credentials&.dig("gog_keyring_password") || SecureRandom.hex(32)
         creds = @principal.credentials.merge("gog_keyring_password" => password)
         @principal.update!(credentials: creds)
       end

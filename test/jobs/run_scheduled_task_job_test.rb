@@ -207,4 +207,77 @@ class RunScheduledTaskJobTest < ActiveSupport::TestCase
     assert task.next_run_at > Time.current
     assert task.enabled?
   end
+
+  # --- Failure tracking ---
+
+  test "record_success resets consecutive_failures" do
+    task = scheduled_tasks(:alice_direct_mail_check)
+    task.update_columns(next_run_at: 1.minute.ago, consecutive_failures: 2)
+
+    result = Tools::Executor::Result.new(stdout: "", stderr: "", exit_code: 0, timed_out: false)
+    Tools::Executor.any_instance.stubs(:call).returns(result)
+
+    RunScheduledTaskJob.perform_now(task.id)
+
+    task.reload
+    assert_equal 0, task.consecutive_failures
+    assert task.enabled?
+  end
+
+  test "record_failure increments consecutive_failures" do
+    task = scheduled_tasks(:alice_direct_mail_check)
+    task.update_columns(next_run_at: 1.minute.ago, consecutive_failures: 0)
+
+    result = Tools::Executor::Result.new(stdout: "", stderr: "Connection refused", exit_code: 1, timed_out: false)
+    Tools::Executor.any_instance.stubs(:call).returns(result)
+
+    RunScheduledTaskJob.perform_now(task.id)
+
+    task.reload
+    assert_equal 1, task.consecutive_failures
+    assert task.enabled?
+  end
+
+  test "auto-disables and sends Telegram notification after 3 consecutive failures" do
+    task = scheduled_tasks(:alice_direct_mail_check)
+    task.update_columns(next_run_at: 1.minute.ago, consecutive_failures: 2)
+
+    result = Tools::Executor::Result.new(stdout: "", stderr: "Connection refused", exit_code: 1, timed_out: false)
+    Tools::Executor.any_instance.stubs(:call).returns(result)
+
+    telegram_conv = conversations(:alice_jennifer)
+    Adapters::Telegram.any_instance.stubs(:send_reply).returns(true)
+
+    assert_difference "Message.count", 1 do
+      assert_no_enqueued_jobs(only: ProcessMessageJob) do
+        RunScheduledTaskJob.perform_now(task.id)
+      end
+    end
+
+    task.reload
+    assert_equal 3, task.consecutive_failures
+    assert_not task.enabled?
+
+    notification = Message.last
+    assert_equal "assistant", notification.role
+    assert_match(/failed 3 times/, notification.content)
+    assert_match(/disabled/, notification.content)
+    assert_equal telegram_conv.id, notification.conversation_id
+    assert_equal "scheduled_task_failure", notification.metadata["source"]
+  end
+
+  test "auto-disables on timeout after threshold" do
+    task = scheduled_tasks(:alice_direct_mail_check)
+    task.update_columns(next_run_at: 1.minute.ago, consecutive_failures: 2)
+
+    result = Tools::Executor::Result.new(stdout: "", stderr: "Execution timed out", exit_code: nil, timed_out: true)
+    Tools::Executor.any_instance.stubs(:call).returns(result)
+    Adapters::Telegram.any_instance.stubs(:send_reply).returns(true)
+
+    RunScheduledTaskJob.perform_now(task.id)
+
+    task.reload
+    assert_equal 3, task.consecutive_failures
+    assert_not task.enabled?
+  end
 end

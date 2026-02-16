@@ -8,6 +8,7 @@ alice_daily_standup:
   interval_seconds: 86400
   enabled: true
   last_run_at: <%= 1.day.ago.iso8601 %>
+  consecutive_failures: 0
   metadata: {}
   tool_input: {}
 
@@ -21,6 +22,7 @@ alice_one_time_reminder:
   interval_seconds:
   enabled: true
   last_run_at:
+  consecutive_failures: 0
   metadata: {}
   tool_input: {}
 
@@ -34,6 +36,7 @@ bob_disabled_task:
   interval_seconds: 604800
   enabled: false
   last_run_at: <%= 1.week.ago.iso8601 %>
+  consecutive_failures: 0
   metadata: {}
   tool_input: {}
 
@@ -48,6 +51,7 @@ alice_direct_mail_check:
   interval_seconds: 600
   enabled: true
   last_run_at: <%= 10.minutes.ago.iso8601 %>
+  consecutive_failures: 0
   metadata: {}
   tool_input:
     attendees: "alice@example.com"

@@ -525,7 +525,9 @@ class ProcessMessageJob < ApplicationJob
   end
 
   def build_principal_env(agent, conversation)
-    agent.principal_env_for(conversation.user)
+    agent.principal_env_for(conversation.user).merge(
+      "STEWARD_USER_ID" => conversation.user_id.to_s
+    )
   end
 
   def extract_text(content_blocks)

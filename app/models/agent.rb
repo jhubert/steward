@@ -63,6 +63,39 @@ class Agent < ApplicationRecord
     enabled_tools.any?
   end
 
+  def enable_skill!(skill_name)
+    skill = Skills::Registry.instance.find(skill_name)
+    raise ArgumentError, "Unknown skill: #{skill_name}" unless skill
+
+    skill.tool_definitions.each do |defn|
+      agent_tools.find_or_create_by!(name: defn[:name]) do |tool|
+        tool.workspace = workspace
+        tool.description = defn[:description]
+        tool.input_schema = defn[:input_schema]
+        tool.command_template = defn[:command_template]
+        tool.working_directory = defn[:working_directory]
+        tool.timeout_seconds = defn[:timeout_seconds]
+        tool.enabled = true
+      end
+    end
+  end
+
+  def disable_skill!(skill_name)
+    skill = Skills::Registry.instance.find(skill_name)
+    raise ArgumentError, "Unknown skill: #{skill_name}" unless skill
+
+    tool_names = skill.tool_definitions.map { |d| d[:name] }
+    agent_tools.where(name: tool_names).destroy_all
+  end
+
+  def enabled_skill_names
+    registry = Skills::Registry.instance
+    registry.all.select do |skill|
+      tool_names = skill.tool_definitions.map { |d| d[:name] }
+      tool_names.any? && tool_names.all? { |n| agent_tools.exists?(name: n) }
+    end.map(&:name)
+  end
+
   def telegram_bot_token
     settings&.dig('telegram_bot_token') || Rails.application.credentials.dig(:telegram, :bot_token)
   end

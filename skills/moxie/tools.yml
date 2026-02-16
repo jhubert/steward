@@ -1,0 +1,26 @@
+tools:
+  - name: moxie_crm
+    description: >-
+      Interact with Moxie CRM. Manage clients, contacts, projects, invoices,
+      expenses, tasks, tickets, opportunities, time entries, and more. Resources:
+      clients, contacts, projects, invoices, expenses, tasks, tickets,
+      opportunities, time, deliverable, payment, attachments, calendar, templates,
+      vendors, forms, pipeline, users, submissions. Actions: list, search, create,
+      stages, comment, approve, upload, url, delete.
+    input_schema:
+      type: object
+      required:
+        - resource
+        - action
+      properties:
+        resource:
+          type: string
+          description: "The CRM resource: clients, contacts, projects, invoices, expenses, tasks, tickets, opportunities, time, deliverable, payment, attachments, calendar, templates, vendors, forms, pipeline, users, submissions"
+        action:
+          type: string
+          description: "Action to perform: list, search, create, stages, comment, approve, upload, url, delete"
+        params:
+          type: string
+          description: 'JSON string of parameters. For search: {"query": "search term"}. For create with flags: {"name": "Acme", "type": "Client"}. For complex creates with JSON body: {"data": {full JSON object}}. Common keys: name, clientName, projectName, email, phone, dueDate, status, amount, notes, description, priority, userEmail, subject, comment, value, stageName, estCloseDate, start, end, deliverableName'
+    command_template: "python3 scripts/moxie-tool.py {resource} {action} {params}"
+    timeout_seconds: 30
