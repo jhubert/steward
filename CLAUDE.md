@@ -6,7 +6,7 @@ A multi-agent AI platform hosted on a Linux server. Think of Steward as a hiring
 
 ```bash
 # Systemd services (Rails app + Solid Queue worker)
-sudo systemctl restart steward                   # Restart Rails app (Puma on port 3003)
+sudo systemctl restart steward                   # Restart Rails app (Puma on port 5000)
 sudo systemctl restart steward-jobs              # Restart Solid Queue worker
 sudo systemctl status steward steward-jobs       # Check status of both services
 # Logs: log/puma.log, log/solid_queue.log
@@ -161,7 +161,7 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 ## Infrastructure
 
 - **Domain**: steward.boardwise.co
-- **Caddy** reverse proxies to localhost:3003
+- **Nginx** reverse proxies to localhost:5000
 - **Platform bot**: @AgentStewardBot (Steward agent, id=1)
 - **Credentials**: `bin/rails credentials:edit` — contains `telegram.bot_token` (fallback), `anthropic.api_key`, and `active_record_encryption` keys
 - **Database**: steward_production (live data), steward_test (tests). The app runs in production mode.
