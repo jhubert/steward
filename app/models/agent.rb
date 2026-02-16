@@ -97,7 +97,7 @@ class Agent < ApplicationRecord
   end
 
   def telegram_bot_token
-    settings&.dig('telegram_bot_token') || Rails.application.credentials.dig(:telegram, :bot_token)
+    settings&.dig('telegram_bot_token') || Rails.application.credentials.dig(:telegram, :bot_token) || ENV["TELEGRAM_BOT_TOKEN"]
   end
 
   def trigger(user:, content:)
