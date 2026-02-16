@@ -5,9 +5,12 @@ A multi-agent AI platform hosted on a Linux server. Think of Steward as a hiring
 ## Commands
 
 ```bash
-PORT=3003 bin/rails server -d                    # Start server (daemonized, port 3003)
-bin/rails restart                                # Restart after code changes
-bundle exec rake solid_queue:start               # Start job worker (processes LLM calls)
+# Systemd services (Rails app + Solid Queue worker)
+sudo systemctl restart steward                   # Restart Rails app (Puma on port 3003)
+sudo systemctl restart steward-jobs              # Restart Solid Queue worker
+sudo systemctl status steward steward-jobs       # Check status of both services
+# Logs: log/puma.log, log/solid_queue.log
+
 bin/rails test                                   # Run tests
 bin/rails db:seed                                # Seed default workspace + Steward agent
 
