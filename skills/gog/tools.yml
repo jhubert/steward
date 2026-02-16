@@ -1,0 +1,53 @@
+tools:
+  - name: gog
+    description: >-
+      Execute Google Workspace commands via the gog CLI. Pass the full command
+      string (everything after "gog").
+
+      Top-level commands: gmail, calendar, drive, docs, sheets, chat, contacts,
+      tasks, people, groups, slides, keep, auth, config
+
+      DOCS: docs create <title> [--parent FOLDER_ID] | docs cat <docId> | docs
+      info <docId> | docs export <docId> [--format pdf|docx|txt] [--out PATH] |
+      docs copy <docId> <title>
+
+      DRIVE: drive ls [--parent FOLDER_ID] | drive search <query> | drive get
+      <fileId> | drive download <fileId> | drive upload <localPath> [--parent
+      FOLDER_ID] | drive mkdir <name> | drive share <fileId> --type user --role
+      writer --email USER | drive url <fileId>
+
+      SHEETS: sheets create <title> | sheets get <spreadsheetId> <range> | sheets
+      update <spreadsheetId> <range> <values> | sheets append <spreadsheetId>
+      <range> <values> | sheets metadata <spreadsheetId> | sheets export
+      <spreadsheetId> [--format csv|xlsx|pdf]
+
+      GMAIL: gmail search <query> [--limit N] | gmail get <messageId> | gmail
+      thread get <threadId> [--full] | gmail thread modify <threadId>
+      [--add LABELS] [--remove LABELS] (use --remove UNREAD to mark read) |
+      gmail send --to ADDR --subject SUBJ --body-html HTML
+      [--cc ADDR] [--reply-to-message-id ID] [--thread-id ID] [--reply-all]
+      [--quote] [--attach PATH] (always prefer --body-html over --body) | gmail drafts create --to ADDR --subject SUBJ
+      | gmail labels list
+
+      CALENDAR: calendar events [calendarId] [--from DATE --to DATE] | calendar
+      create <calendarId> --summary TITLE --start DATETIME --end DATETIME |
+      calendar freebusy <calendarIds> --from DATE --to DATE | calendar search
+      <query>
+
+      CHAT: chat spaces list | chat messages list <spaceId> | chat messages send
+      <spaceId> --text MSG | chat dm send <userId> --text MSG
+
+      Global flags: --json (JSON output), --plain (TSV output), --account EMAIL
+      (select account)
+
+      Use "<command> --help" to discover additional flags for any subcommand.
+    input_schema:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: 'The gog command to run (everything after "gog"), e.g. "gmail search in:inbox is:unread --limit 10"'
+    command_template: "ruby scripts/run.rb {command}"
+    timeout_seconds: 60

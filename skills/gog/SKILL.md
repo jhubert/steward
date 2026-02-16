@@ -15,12 +15,38 @@ Pass the gog subcommand as the `command` parameter. Always omit account/email fl
 
 ### Gmail
 ```
-gmail search is:unread newer_than:7d          # Search messages
+# Search & read
+gmail search is:unread newer_than:7d          # Search threads
 gmail search from:boss@company.com            # Search by sender
-gmail read <message_id>                       # Read a specific message
-gmail send --to user@example.com --subject "Hi" --body "Hello"  # Send email
-gmail labels                                  # List labels
+gmail get <message_id>                        # Read a specific message
+gmail thread get <thread_id>                  # Read full thread (all messages)
+
+# Mark as read/unread
+gmail thread modify <thread_id> --remove UNREAD   # Mark thread as read
+gmail thread modify <thread_id> --add UNREAD      # Mark thread as unread
+
+# Send & reply (always use --body-html; plain text has line-break rendering issues)
+gmail send --to user@example.com --subject "Hi" --body-html "<p>Hello</p>"
+gmail send --thread-id <thread_id> --reply-all --subject "Re: ..." --body-html "<p>Reply text</p>"
+gmail send --reply-to-message-id <msg_id> --reply-all --subject "Re: ..." --body-html "<p>Reply</p>"
+
+# Labels
+gmail labels list                             # List labels
+gmail thread modify <thread_id> --add "LabelName" --remove "OtherLabel"
 ```
+
+#### Reply flags (for `gmail send`)
+- `--reply-to-message-id ID` — reply to a specific message (sets In-Reply-To/References headers and thread)
+- `--thread-id ID` — reply within a thread (uses latest message for headers)
+- `--reply-all` — auto-populate To/CC from original message (requires one of the above)
+- `--quote` — include quoted original message in reply body
+
+#### Email workflow
+When checking email, always follow this pattern:
+1. Search for unread: `gmail search in:inbox is:unread`
+2. Read the full thread: `gmail thread get <thread_id>` — this shows ALL messages, including earlier context you need to understand replies
+3. Take action (reply, forward, etc.)
+4. Mark as read: `gmail thread modify <thread_id> --remove UNREAD`
 
 ### Calendar
 ```
