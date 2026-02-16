@@ -5,7 +5,7 @@ jennifer_alice:
   role: "CEO"
   display_name: "Alice"
   permissions: {}
-  metadata: {}
+  metadata: { "contact": { "email": "alice@example.com", "phone": "+1-555-0001" } }
 
 jennifer_bob:
   workspace: default
@@ -14,4 +14,4 @@ jennifer_bob:
   role: "COO"
   display_name: "Bob"
   permissions: {}
-  metadata: {}
+  metadata: { "contact": { "email": "bob@example.com" } }

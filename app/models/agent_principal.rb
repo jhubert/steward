@@ -20,6 +20,19 @@ class AgentPrincipal < ApplicationRecord
     end
   end
 
+  def contact_details
+    contact = metadata&.dig("contact")
+    return nil if contact.blank?
+
+    parts = []
+    parts << "Email: #{contact['email']}" if contact["email"].present?
+    parts << "Phone: #{contact['phone']}" if contact["phone"].present?
+    contact.except("email", "phone").each do |key, value|
+      parts << "#{key.titleize}: #{value}" if value.present?
+    end
+    parts.presence&.join(", ")
+  end
+
   def credentials
     return {} if credentials_json.blank?
     JSON.parse(credentials_json)

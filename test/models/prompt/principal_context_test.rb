@@ -47,6 +47,14 @@ class Prompt::PrincipalContextTest < ActiveSupport::TestCase
     assert_includes result, 'Alice (CEO) ← current'
   end
 
+  test 'includes contact details in roster' do
+    conversation = conversations(:alice_jennifer)
+    result = Prompt::PrincipalContext.new(conversation).call
+
+    assert_includes result, 'Email: alice@example.com, Phone: +1-555-0001'
+    assert_includes result, 'Email: bob@example.com'
+  end
+
   test 'includes discretion guidelines' do
     conversation = conversations(:alice_jennifer)
     result = Prompt::PrincipalContext.new(conversation).call

@@ -43,6 +43,28 @@ class AgentPrincipalTest < ActiveSupport::TestCase
     assert_equal 'Alice', ap.roster_entry
   end
 
+  test 'contact_details returns formatted string from metadata' do
+    ap = agent_principals(:jennifer_alice)
+    assert_equal 'Email: alice@example.com, Phone: +1-555-0001', ap.contact_details
+  end
+
+  test 'contact_details returns nil when no contact in metadata' do
+    ap = agent_principals(:jennifer_alice)
+    ap.metadata = {}
+    assert_nil ap.contact_details
+  end
+
+  test 'contact_details includes only present fields' do
+    ap = agent_principals(:jennifer_bob)
+    assert_equal 'Email: bob@example.com', ap.contact_details
+  end
+
+  test 'contact_details includes custom fields' do
+    ap = agent_principals(:jennifer_alice)
+    ap.metadata = { "contact" => { "email" => "a@b.com", "telegram" => "@alice" } }
+    assert_equal 'Email: a@b.com, Telegram: @alice', ap.contact_details
+  end
+
   test 'credentials returns empty hash when credentials_json is blank' do
     ap = agent_principals(:jennifer_alice)
     assert_equal({}, ap.credentials)
