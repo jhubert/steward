@@ -1,0 +1,26 @@
+tools:
+  - name: web_search
+    description: "Search the web for information. Returns a list of results with titles, URLs, and descriptions. Use concise, specific queries."
+    input_schema:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: 'The search query (e.g. "Ruby on Rails deployment best practices")'
+    command_template: "python3 scripts/web-search.py {query}"
+    timeout_seconds: 60
+
+  - name: web_read
+    description: "Read the content of a web page. Returns the page as clean, readable markdown. Use this to read articles, documentation, blog posts, or any public URL."
+    input_schema:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          description: 'The full URL to read (e.g. "https://example.com/article")'
+    command_template: "python3 scripts/web-read.py {url}"
+    timeout_seconds: 30
