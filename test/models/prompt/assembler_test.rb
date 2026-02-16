@@ -15,6 +15,18 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     assert_includes messages.first[:content], 'Steward'
   end
 
+  test 'includes platform charter before agent core' do
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Agent Charter'
+    assert_includes system_content, 'Be resourceful'
+    # Charter should appear before the agent's own system prompt
+    charter_pos = system_content.index('Agent Charter')
+    agent_pos = system_content.index('Steward')
+    assert charter_pos < agent_pos, 'Charter should appear before agent core'
+  end
+
   test 'includes conversation history' do
     messages = Prompt::Assembler.new(@conversation).call
 

@@ -23,6 +23,7 @@ module Prompt
 
     def build_system_content
       parts = []
+      parts << platform_charter
       parts << agent_core
       parts << date_context
       parts << capabilities_context
@@ -33,6 +34,10 @@ module Prompt
       parts << thread_catalog
       parts << background_context if @conversation.background?
       parts.compact.join("\n\n---\n\n")
+    end
+
+    def platform_charter
+      @platform_charter ||= Rails.root.join('config', 'agent_charter.md').read.strip
     end
 
     def agent_core
