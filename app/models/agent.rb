@@ -125,11 +125,13 @@ class Agent < ApplicationRecord
     return {} unless principal&.credentials&.key?("gog_keyring_password")
 
     user_gog_dir = Rails.root.join("data", "gog", user.id.to_s).to_s
-    {
+    env = {
       "XDG_CONFIG_HOME" => user_gog_dir,
       "GOG_KEYRING_PASSWORD" => principal.credentials["gog_keyring_password"],
       "GOG_KEYRING_BACKEND" => "file"
     }
+    env["GOG_ACCOUNT"] = principal.credentials["gog_account"] if principal.credentials["gog_account"].present?
+    env
   end
 
   def register_telegram_webhook!
