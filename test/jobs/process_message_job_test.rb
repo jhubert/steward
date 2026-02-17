@@ -902,6 +902,267 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     end
   end
 
+  test 'create_skill virtual tool creates skill files and reloads registry' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'create_skill',
+      tool_id: 'toolu_skill_ok',
+      input: {
+        'skill_name' => 'test-created-skill',
+        'description' => 'A test skill created by the virtual tool.',
+        'instructions' => "# Test Skill\n\nDo the test thing."
+      }
+    )
+    text_response = build_text_response('Skill created!')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    # Verify files were created
+    skill_dir = Rails.root.join('skills', 'test-created-skill')
+    assert skill_dir.exist?, 'Skill directory should exist'
+    assert skill_dir.join('SKILL.md').exist?, 'SKILL.md should exist'
+
+    content = skill_dir.join('SKILL.md').read
+    assert_match(/name: test-created-skill/, content)
+    assert_match(/A test skill created by the virtual tool/, content)
+    assert_match(/# Test Skill/, content)
+
+    # Verify registry was reloaded
+    skill = Skills::Registry.instance.find('test-created-skill')
+    assert_not_nil skill, 'Registry should have the new skill'
+
+    # Verify tool result
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/created successfully/, tool_content[:content])
+  ensure
+    FileUtils.rm_rf(Rails.root.join('skills', 'test-created-skill'))
+    Skills::Registry.instance.reload!
+  end
+
+  test 'create_skill with tools_yaml and scripts creates all files' do
+    tools_yaml = <<~YAML
+      tools:
+        - name: test_tool
+          description: "A test tool"
+          input_schema:
+            type: object
+            properties:
+              query:
+                type: string
+          command_template: "python3 scripts/test.py {query}"
+          timeout_seconds: 15
+    YAML
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'create_skill',
+      tool_id: 'toolu_skill_full',
+      input: {
+        'skill_name' => 'test-full-skill',
+        'description' => 'A full skill with tools and scripts.',
+        'instructions' => '# Full Skill',
+        'tools_yaml' => tools_yaml,
+        'scripts' => { 'test.py' => "#!/usr/bin/env python3\nprint('hello')" }
+      }
+    )
+    text_response = build_text_response('Done!')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    skill_dir = Rails.root.join('skills', 'test-full-skill')
+    assert skill_dir.join('SKILL.md').exist?
+    assert skill_dir.join('tools.yml').exist?
+    assert skill_dir.join('scripts', 'test.py').exist?
+    assert File.executable?(skill_dir.join('scripts', 'test.py'))
+
+    # Verify tools.yml content
+    tools_data = YAML.safe_load(skill_dir.join('tools.yml').read)
+    assert_equal 'test_tool', tools_data['tools'].first['name']
+
+    # Verify registry loaded tools
+    skill = Skills::Registry.instance.find('test-full-skill')
+    assert_equal 1, skill.tool_definitions.size
+    assert_equal 'test_tool', skill.tool_definitions.first[:name]
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/SKILL.md/, tool_content[:content])
+    assert_match(/tools.yml/, tool_content[:content])
+    assert_match(/scripts\/test.py/, tool_content[:content])
+  ensure
+    FileUtils.rm_rf(Rails.root.join('skills', 'test-full-skill'))
+    Skills::Registry.instance.reload!
+  end
+
+  test 'create_skill rejects invalid skill name' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'create_skill',
+      tool_id: 'toolu_skill_bad_name',
+      input: {
+        'skill_name' => '../etc/evil',
+        'description' => 'Malicious skill',
+        'instructions' => '# Evil'
+      }
+    )
+    text_response = build_text_response('Invalid name.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    # Verify no directory was created
+    assert_not Rails.root.join('skills', '..', 'etc', 'evil').exist?
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/must be kebab-case/, tool_content[:content])
+  end
+
+  test 'create_skill rejects invalid script filenames' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'create_skill',
+      tool_id: 'toolu_skill_bad_script',
+      input: {
+        'skill_name' => 'test-bad-scripts',
+        'description' => 'Bad scripts',
+        'instructions' => '# Bad',
+        'scripts' => { '../evil.sh' => '#!/bin/bash\nrm -rf /' }
+      }
+    )
+    text_response = build_text_response('Bad filename.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Invalid script filename/, tool_content[:content])
+  ensure
+    FileUtils.rm_rf(Rails.root.join('skills', 'test-bad-scripts'))
+    Skills::Registry.instance.reload!
+  end
+
+  test 'create_skill with enable_for enables skill on target agent' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'create_skill',
+      tool_id: 'toolu_skill_enable',
+      input: {
+        'skill_name' => 'test-enable-skill',
+        'description' => 'Skill to be auto-enabled.',
+        'instructions' => '# Auto-enabled',
+        'tools_yaml' => "tools:\n  - name: test_enable_tool\n    description: \"Test\"\n    input_schema:\n      type: object\n      properties:\n        x:\n          type: string\n    command_template: \"echo {x}\"\n    timeout_seconds: 10",
+        'enable_for' => 'Jennifer'
+      }
+    )
+    text_response = build_text_response('Enabled!')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    jennifer = agents(:jennifer)
+
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    # Verify tool was created on the agent
+    assert jennifer.agent_tools.exists?(name: 'test_enable_tool'), 'Agent tool should have been created'
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Enabled for agent: Jennifer/, tool_content[:content])
+  ensure
+    agents(:jennifer).agent_tools.where(name: 'test_enable_tool').destroy_all
+    FileUtils.rm_rf(Rails.root.join('skills', 'test-enable-skill'))
+    Skills::Registry.instance.reload!
+  end
+
+  test 'create_skill with invalid tools_yaml returns error' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'create_skill',
+      tool_id: 'toolu_skill_bad_yaml',
+      input: {
+        'skill_name' => 'test-bad-yaml',
+        'description' => 'Bad YAML',
+        'instructions' => '# Bad',
+        'tools_yaml' => "not: valid: yaml: [["
+      }
+    )
+    text_response = build_text_response('Invalid YAML.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Invalid YAML|must have a top-level/, tool_content[:content])
+  ensure
+    FileUtils.rm_rf(Rails.root.join('skills', 'test-bad-yaml'))
+    Skills::Registry.instance.reload!
+  end
+
   test 'agents without agent-specific tools still get builtin tools' do
     stub_text_response('Hi there!')
 

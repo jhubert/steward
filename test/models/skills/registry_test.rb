@@ -79,4 +79,76 @@ class Skills::RegistryTest < ActiveSupport::TestCase
 
     assert_equal skill.path, tool[:working_directory]
   end
+
+  test 'auto-reloads when a new skill is created on disk' do
+    registry = Skills::Registry.instance
+
+    # Verify the skill does not exist yet
+    assert_nil registry.find('test-auto-reload')
+
+    # Create a new skill on disk
+    skill_dir = Rails.root.join('skills', 'test-auto-reload')
+    FileUtils.mkdir_p(skill_dir)
+    File.write(skill_dir.join('SKILL.md'), <<~MD)
+      ---
+      name: test-auto-reload
+      description: A test skill for auto-reload.
+      ---
+
+      # Test Auto-Reload
+
+      This skill tests auto-reload detection.
+    MD
+
+    # Touch the skills directory to update mtime
+    FileUtils.touch(Rails.root.join('skills'))
+
+    # find should auto-reload and discover the new skill
+    skill = registry.find('test-auto-reload')
+    assert_not_nil skill, 'Expected auto-reload to discover the new skill'
+    assert_equal 'test-auto-reload', skill.name
+    assert_equal 'A test skill for auto-reload.', skill.description
+  ensure
+    FileUtils.rm_rf(skill_dir) if skill_dir&.exist?
+    registry.reload!
+  end
+
+  test 'auto-reloads when a SKILL.md is modified' do
+    registry = Skills::Registry.instance
+
+    # Create a skill
+    skill_dir = Rails.root.join('skills', 'test-modify-reload')
+    FileUtils.mkdir_p(skill_dir)
+    File.write(skill_dir.join('SKILL.md'), <<~MD)
+      ---
+      name: test-modify-reload
+      description: Original description.
+      ---
+
+      # Original
+    MD
+    FileUtils.touch(Rails.root.join('skills'))
+    registry.reload!
+
+    skill = registry.find('test-modify-reload')
+    assert_equal 'Original description.', skill.description
+
+    # Modify the SKILL.md
+    sleep 0.1 # ensure mtime changes
+    File.write(skill_dir.join('SKILL.md'), <<~MD)
+      ---
+      name: test-modify-reload
+      description: Updated description.
+      ---
+
+      # Updated
+    MD
+
+    # find should pick up the change
+    skill = registry.find('test-modify-reload')
+    assert_equal 'Updated description.', skill.description
+  ensure
+    FileUtils.rm_rf(skill_dir) if skill_dir&.exist?
+    registry.reload!
+  end
 end

@@ -14,7 +14,9 @@ class WebhooksController < ActionController::API
     adapter = Adapters::Telegram.new(bot_token: agent.telegram_bot_token)
     normalized = adapter.normalize(params.to_unsafe_h)
 
-    if normalized.nil? || normalized[:content].blank?
+    has_media = normalized&.dig(:raw_message).present?
+
+    if normalized.nil? || (normalized[:content].blank? && !has_media)
       head :ok
       return
     end
@@ -49,18 +51,55 @@ class WebhooksController < ActionController::API
       end
     end
 
+    # Download media (must happen after conversation exists for storage path)
+    attachments = []
+    if has_media
+      downloader = Adapters::Telegram::MediaDownloader.new(bot_token: agent.telegram_bot_token)
+      attachments = downloader.call(
+        normalized[:raw_message],
+        agent_id: agent.id,
+        conversation_id: conversation.id
+      )
+    end
+
+    # Build message content — ensure we always have something
+    content = normalized[:content]
+    if content.blank? && attachments.any?
+      content = attachments.map { |a| a.metadata[:description] || "[#{a.type.capitalize}]" }.join(" ")
+    end
+
+    # Build metadata with attachment info
+    message_metadata = normalized[:metadata] || {}
+    if attachments.any?
+      message_metadata["attachments"] = attachments.map { |a| serialize_attachment(a) }
+    end
+
     # Append the incoming message
     message = conversation.messages.create!(
       workspace: workspace,
       user: user,
       role: 'user',
-      content: normalized[:content],
-      metadata: normalized[:metadata] || {}
+      content: content,
+      metadata: message_metadata
     )
 
     # Enqueue processing
     ProcessMessageJob.perform_later(message.id)
 
     head :ok
+  end
+
+  private
+
+  def serialize_attachment(attachment)
+    {
+      "type" => attachment.type,
+      "file_path" => attachment.file_path,
+      "content_type" => attachment.content_type,
+      "filename" => attachment.filename,
+      "size" => attachment.size
+    }.tap do |h|
+      h["description"] = attachment.metadata[:description] if attachment.metadata[:description]
+    end
   end
 end

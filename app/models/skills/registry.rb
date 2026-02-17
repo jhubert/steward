@@ -18,16 +18,19 @@ module Skills
     end
 
     def all
+      reload_if_stale!
       @skills.values
     end
 
     def find(name)
+      reload_if_stale!
       @skills[name]
     end
 
     # Returns skills whose instructions should be included in the prompt.
     # For now, returns all skills. The Activator will filter in the future.
     def active_skills_for(conversation)
+      reload_if_stale!
       # Phase 1: no activation logic, return empty.
       # Skills are opt-in via conversation metadata or explicit commands.
       skill_names = conversation.metadata&.dig('active_skills') || []
@@ -36,6 +39,7 @@ module Skills
 
     # Metadata-only catalog for system prompt (name + description, lightweight).
     def catalog
+      reload_if_stale!
       @skills.map do |name, skill|
         { name: name, description: skill.description }
       end
@@ -43,10 +47,37 @@ module Skills
 
     # Returns tool definitions for a specific skill.
     def tools_for(skill_name)
+      reload_if_stale!
       @skills.dig(skill_name)&.tool_definitions || []
     end
 
     private
+
+    def reload_if_stale!
+      skills_dir = Rails.root.join('skills')
+      return unless skills_dir.exist?
+
+      current_mtime = skills_dir_mtime(skills_dir)
+      if @loaded_at.nil? || current_mtime > @loaded_at
+        @skills = {}
+        load_skills
+      end
+    end
+
+    def skills_dir_mtime(skills_dir)
+      # Check mtime of the skills directory itself and all immediate subdirectories
+      # This catches new skill dirs being added and existing ones being modified
+      mtimes = [skills_dir.mtime]
+      skills_dir.children.select(&:directory?).each do |dir|
+        next unless dir.exist? # directory may have been deleted between children and mtime
+        mtimes << dir.mtime
+        skill_md = dir.join('SKILL.md')
+        mtimes << skill_md.mtime if skill_md.exist?
+        tools_yml = dir.join('tools.yml')
+        mtimes << tools_yml.mtime if tools_yml.exist?
+      end
+      mtimes.max
+    end
 
     def load_skills
       skills_dir = Rails.root.join('skills')
@@ -71,6 +102,7 @@ module Skills
         )
       end
 
+      @loaded_at = Time.current
       Rails.logger.info("[Skills] Loaded #{@skills.size} skills: #{@skills.keys.join(', ')}")
     end
 

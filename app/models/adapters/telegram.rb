@@ -17,17 +17,27 @@ module Adapters
       chat = message['chat']
       from = message['from']
 
-      {
+      result = {
         user_external_key: 'telegram_chat_id',
         user_external_value: chat['id'].to_s,
         user_name: [from['first_name'], from['last_name']].compact.join(' '),
         external_thread_key: chat['id'].to_s,
-        content: message['text'] || '',
+        content: message['text'] || message['caption'] || '',
         metadata: {
           telegram_message_id: message['message_id'],
           telegram_chat_type: chat['type']
         }
       }
+
+      # Pass the raw message through so the controller can extract media
+      result[:raw_message] = message if has_media?(message)
+
+      result
+    end
+
+    def has_media?(message)
+      Telegram::MediaDownloader::MEDIA_TYPES.any? { |type| message[type].present? } ||
+        message['location'].present? || message['contact'].present? || message['venue'].present?
     end
 
     def send_typing(conversation)

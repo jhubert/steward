@@ -109,6 +109,22 @@ module Tools
           },
           "required" => ["task_id"]
         }
+      },
+      {
+        name: "create_skill",
+        description: "Create a new skill on the Steward platform. A skill is a directory with a SKILL.md file (instructions), optional tools.yml (tool definitions), and optional scripts. Use this to codify repeated workflows into reusable agent capabilities.",
+        input_schema: {
+          "type" => "object",
+          "properties" => {
+            "skill_name" => { "type" => "string", "description" => "Kebab-case skill name (e.g., 'restaurant-search'). Must contain only lowercase letters, numbers, and hyphens." },
+            "description" => { "type" => "string", "description" => "One-line description for the skill catalog listing." },
+            "instructions" => { "type" => "string", "description" => "Markdown body for SKILL.md (everything after the frontmatter). Include headings, when-to-use, and step-by-step instructions." },
+            "tools_yaml" => { "type" => "string", "description" => "Optional YAML content for tools.yml. Must follow the tools.yml schema with a top-level 'tools' key." },
+            "scripts" => { "type" => "object", "description" => "Optional map of script filename to content (e.g., {\"search.py\": \"#!/usr/bin/env python3\\n...\"}). Files are created in the scripts/ subdirectory with executable permissions." },
+            "enable_for" => { "type" => "string", "description" => "Optional agent name to auto-enable this skill for (e.g., 'Jennifer Lawson')." }
+          },
+          "required" => ["skill_name", "description", "instructions"]
+        }
       }
     ].freeze
 

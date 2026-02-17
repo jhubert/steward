@@ -61,8 +61,8 @@ class ProcessMessageJob < ApplicationJob
     assembler = Prompt::Assembler.new(conversation, incoming_message: message.content)
     messages = assembler.call
 
-    # Append the new user message
-    messages << { role: 'user', content: message.content }
+    # Append the new user message (with media blocks if present)
+    messages << { role: 'user', content: message.content_blocks_for_api }
 
     # Get tool definitions (nil if agent has no tools)
     tool_definitions = Tools::DefinitionBuilder.new(agent: agent, conversation: conversation).call
@@ -284,6 +284,8 @@ class ProcessMessageJob < ApplicationJob
       execute_cancel_scheduled_task(input, conversation)
     when "send_message"
       execute_send_message(input, conversation)
+    when "create_skill"
+      execute_create_skill(input, conversation)
     end
   end
 
@@ -513,6 +515,90 @@ class ProcessMessageJob < ApplicationJob
     rescue Adapters::DeliveryError => e
       virtual_result("send_message", "Message saved but delivery failed: #{e.message}", input: text.truncate(200))
     end
+  end
+
+  def execute_create_skill(input, conversation)
+    skill_name = input["skill_name"].to_s.strip
+    description = input["description"].to_s.strip
+    instructions = input["instructions"].to_s.strip
+    tools_yaml = input["tools_yaml"]&.strip.presence
+    scripts = input["scripts"].is_a?(Hash) ? input["scripts"] : {}
+    enable_for = input["enable_for"]&.strip.presence
+
+    # Validate required fields
+    if skill_name.blank? || description.blank? || instructions.blank?
+      return virtual_result("create_skill", "Error: 'skill_name', 'description', and 'instructions' are all required.")
+    end
+
+    # Validate skill name: kebab-case only, no path traversal
+    unless skill_name.match?(/\A[a-z0-9]+(-[a-z0-9]+)*\z/)
+      return virtual_result("create_skill", "Error: skill_name must be kebab-case (lowercase letters, numbers, hyphens). Got: '#{skill_name}'")
+    end
+
+    skills_dir = Rails.root.join("skills", skill_name)
+    created_files = []
+
+    # Create skill directory
+    FileUtils.mkdir_p(skills_dir)
+
+    # Write SKILL.md with frontmatter
+    skill_md_content = <<~MARKDOWN
+      ---
+      name: #{skill_name}
+      description: #{description}
+      ---
+
+      #{instructions}
+    MARKDOWN
+    File.write(skills_dir.join("SKILL.md"), skill_md_content)
+    created_files << "SKILL.md"
+
+    # Write tools.yml if provided
+    if tools_yaml
+      begin
+        parsed = YAML.safe_load(tools_yaml)
+        unless parsed.is_a?(Hash) && parsed["tools"].is_a?(Array)
+          return virtual_result("create_skill", "Error: tools_yaml must have a top-level 'tools' key with an array of tool definitions.")
+        end
+        File.write(skills_dir.join("tools.yml"), tools_yaml)
+        created_files << "tools.yml"
+      rescue Psych::SyntaxError => e
+        return virtual_result("create_skill", "Error: Invalid YAML in tools_yaml: #{e.message}")
+      end
+    end
+
+    # Write script files if provided
+    if scripts.any?
+      scripts_dir = skills_dir.join("scripts")
+      FileUtils.mkdir_p(scripts_dir)
+      scripts.each do |filename, content|
+        # Validate filename: no path traversal
+        if filename.include?("/") || filename.include?("\\") || filename.start_with?(".")
+          return virtual_result("create_skill", "Error: Invalid script filename '#{filename}'. Must be a simple filename without path separators.")
+        end
+        script_path = scripts_dir.join(filename)
+        File.write(script_path, content)
+        FileUtils.chmod(0o755, script_path)
+        created_files << "scripts/#{filename}"
+      end
+    end
+
+    # Reload the registry so the new skill is immediately available
+    Skills::Registry.instance.reload!
+
+    # Optionally enable for an agent
+    enable_message = ""
+    if enable_for
+      agent = Agent.find_by(name: enable_for)
+      if agent
+        agent.enable_skill!(skill_name)
+        enable_message = "\nEnabled for agent: #{enable_for}"
+      else
+        enable_message = "\nWarning: Agent '#{enable_for}' not found — skill was created but not enabled."
+      end
+    end
+
+    virtual_result("create_skill", "Skill '#{skill_name}' created successfully.\nFiles: #{created_files.join(', ')}#{enable_message}", input: skill_name)
   end
 
   def virtual_result(tool_name, content, input: nil)

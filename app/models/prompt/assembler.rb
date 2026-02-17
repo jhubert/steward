@@ -213,7 +213,7 @@ module Prompt
       # filter out system messages (session break notices etc. live in the summary)
       recent.filter_map do |msg|
         next if msg.role == 'system'
-        { role: msg.role, content: msg.content }
+        { role: msg.role, content: msg.content_blocks_for_api }
       end
     end
 
