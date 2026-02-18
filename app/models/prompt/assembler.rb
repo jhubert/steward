@@ -202,12 +202,27 @@ module Prompt
       "otherwise, take any needed actions (save notes, use tools) silently."
     end
 
+    # How many messages before the summary cutoff to keep as overlap.
+    # Preserves immediate conversational context that the summary may
+    # not capture in enough detail (e.g. a back-and-forth that was
+    # just compacted seconds ago).
+    OVERLAP_MESSAGES = 6
+
     def build_history
-      scope = @conversation.messages.chronological
       if @state.summarized_through_message_id
-        scope = scope.where('id > ?', @state.summarized_through_message_id)
+        # Messages after the summary cutoff (the primary window)
+        post = @conversation.messages.chronological
+                 .where('id > ?', @state.summarized_through_message_id).to_a
+
+        # Overlap: keep a few messages from just before the cutoff for continuity
+        overlap = @conversation.messages.chronological
+                    .where('id <= ?', @state.summarized_through_message_id)
+                    .last(OVERLAP_MESSAGES)
+
+        recent = (overlap + post).last(history_message_limit)
+      else
+        recent = @conversation.messages.chronological.last(history_message_limit)
       end
-      recent = scope.last(history_message_limit)
 
       # Anthropic API only accepts user/assistant roles in messages array;
       # filter out system messages (session break notices etc. live in the summary)

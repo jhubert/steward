@@ -164,21 +164,28 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     assert_includes system_content, 'find_availability'
   end
 
-  test 'build_history excludes messages before summarized_through_message_id' do
-    # Create messages with known ordering (IDs are sequential for created records)
-    old_msg = @conversation.messages.create!(
+  test 'build_history includes overlap messages before summarized_through_message_id' do
+    # Create messages: some old (well before cutoff), some near the cutoff, some after
+    far_old_msgs = (Prompt::Assembler::OVERLAP_MESSAGES + 2).times.map do |i|
+      @conversation.messages.create!(
+        workspace: workspaces(:default), user: users(:alice),
+        role: i.even? ? 'user' : 'assistant',
+        content: "Far old message #{i}"
+      )
+    end
+
+    cutoff_msg = @conversation.messages.create!(
       workspace: workspaces(:default), user: users(:alice),
-      role: 'user', content: 'Old message before compaction'
+      role: 'assistant', content: 'Message right at compaction cutoff'
     )
     new_msg = @conversation.messages.create!(
       workspace: workspaces(:default), user: users(:alice),
-      role: 'assistant', content: 'New message after compaction'
+      role: 'user', content: 'New message after compaction'
     )
 
-    # Mark through old_msg as summarized
     @conversation.state.update!(
       summary: 'Alice greeted Steward.',
-      summarized_through_message_id: old_msg.id
+      summarized_through_message_id: cutoff_msg.id
     )
 
     messages = Prompt::Assembler.new(@conversation).call
@@ -186,11 +193,15 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     # The system message should include the summary
     assert_includes messages.first[:content], 'Alice greeted Steward.'
 
-    # History should NOT include the old message's content
     history_contents = messages[1..].map { |m| m[:content] }
-    refute_includes history_contents, 'Old message before compaction'
 
-    # History SHOULD include messages after the pointer
+    # Messages well before the cutoff should be excluded (outside overlap window)
+    refute_includes history_contents, 'Far old message 0'
+
+    # The cutoff message itself should be included (within overlap window)
+    assert_includes history_contents, 'Message right at compaction cutoff'
+
+    # Messages after the cutoff should be included
     assert_includes history_contents, 'New message after compaction'
   end
 
