@@ -10,9 +10,11 @@ action = ARGV[0]
 raw_params = ARGV[1]
 
 params = if raw_params && raw_params != "params" && !raw_params.empty?
-  JSON.parse(raw_params)
-rescue JSON::ParserError
-  {}
+  begin
+    JSON.parse(raw_params)
+  rescue JSON::ParserError
+    {}
+  end
 else
   {}
 end

@@ -20,8 +20,17 @@ class ProcessMessageJob < ApplicationJob
 
     reply = nil
 
-    # Single-writer lock: generate LLM reply and persist it
-    conversation.with_lock do
+    # Single-writer lock using PostgreSQL advisory lock.
+    # Unlike with_lock (SELECT FOR UPDATE), this fails immediately if another
+    # job is already processing this conversation — no queueing/deadlocking.
+    unless acquire_conversation_lock(conversation)
+      Rails.logger.info("[ProcessMessageJob] Conversation #{conversation.id} locked by another job, retrying later")
+      # Re-enqueue with a delay so the current processor can finish
+      self.class.set(wait: 5.seconds).perform_later(message_id)
+      return
+    end
+
+    begin
       agent = conversation.agent
       adapter = adapter_for(conversation)
 
@@ -41,6 +50,8 @@ class ProcessMessageJob < ApplicationJob
       else
         reply = generate_reply(message, conversation, agent, adapter)
       end
+    ensure
+      release_conversation_lock(conversation)
     end
 
     # Delivery happens outside the transaction — if this fails, the reply
@@ -628,5 +639,22 @@ class ProcessMessageJob < ApplicationJob
         { type: 'tool_use', id: block.id, name: block.name, input: block.input }
       end
     end.compact
+  end
+
+  # Namespace constant for advisory locks to avoid collisions with other uses.
+  # The two-arg form pg_try_advisory_lock(classid, objid) uses two int4 values.
+  CONVERSATION_LOCK_NAMESPACE = 1
+
+  def acquire_conversation_lock(conversation)
+    result = ActiveRecord::Base.connection.select_value(
+      "SELECT pg_try_advisory_lock(#{CONVERSATION_LOCK_NAMESPACE}, #{conversation.id})"
+    )
+    result == true
+  end
+
+  def release_conversation_lock(conversation)
+    ActiveRecord::Base.connection.execute(
+      "SELECT pg_advisory_unlock(#{CONVERSATION_LOCK_NAMESPACE}, #{conversation.id})"
+    )
   end
 end

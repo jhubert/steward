@@ -12,5 +12,5 @@ tools:
         params:
           type: string
           description: 'JSON parameters for the action. For enable_skill/disable_skill: {"agent": "Name", "skill": "skill_name"}. For create_agent: {"name": "Name", "system_prompt": "...", "telegram_bot_token": "optional"}'
-    command_template: "ruby scripts/manage.rb {action} {params}"
+    command_template: "bin/rails runner skills/agent-management/scripts/manage.rb {action} {params}"
     timeout_seconds: 30

@@ -9,6 +9,9 @@ Rails.application.config.after_initialize do
       raise "Anthropic API key not found. Set ANTHROPIC_API_KEY env var or add to credentials."
     end
   else
-    Rails.application.config.anthropic_client = Anthropic::Client.new(api_key: key)
+    Rails.application.config.anthropic_client = Anthropic::Client.new(
+      api_key: key,
+      timeout: 120.0 # seconds — default is 600s which causes lock cascades
+    )
   end
 end
