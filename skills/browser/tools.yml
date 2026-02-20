@@ -1,0 +1,13 @@
+tools:
+  - name: browser
+    description: "Interactive browser for navigating websites, clicking links, filling forms, and logging into services. Send commands as a single string. Commands: open <url>, snapshot, click <ref>, type <ref> <text>, fill <ref> <text>, select <ref> <value>, check <ref>, uncheck <ref>, scroll down/up, back, forward, refresh, wait, text, url, close. Always open a URL first, then use snapshot to see interactive elements with numbered refs."
+    input_schema:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: 'Command string (e.g. "open https://example.com", "click 3", "type 5 hello world", "snapshot")'
+    command_template: "node scripts/browser-client.js {command}"
+    timeout_seconds: 60
