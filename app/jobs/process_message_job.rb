@@ -152,6 +152,22 @@ class ProcessMessageJob < ApplicationJob
       end
     end
 
+    # If the model ended with tool calls but no text, prompt it for a summary
+    if reply_text.blank? && tool_call_summaries.any?
+      messages << { role: 'assistant', content: serialize_content(response.content) } unless messages.last&.dig(:role) == 'assistant'
+      messages << { role: 'user', content: 'You used tools but didn\'t include a text reply. Please summarize what you accomplished and any next steps.' }
+
+      summary_response = Rails.configuration.anthropic_client.messages.create(
+        model: agent.model,
+        max_tokens: agent.token_budgets['response'],
+        system: messages.first[:content],
+        messages: messages[1..]
+      )
+      total_input_tokens += summary_response.usage.input_tokens
+      total_output_tokens += summary_response.usage.output_tokens
+      reply_text = extract_text(summary_response.content)
+    end
+
     # Persist tool activity log for cross-message memory
     if tool_log_rounds.any?
       state = conversation.ensure_state!
