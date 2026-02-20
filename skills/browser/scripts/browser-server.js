@@ -5,7 +5,7 @@
  * HTTP server on 127.0.0.1:18900.
  *
  * Commands: open, snapshot, click, type, fill, select, check, uncheck,
- *           scroll, back, forward, refresh, wait, text, url, close
+ *           scroll, back, forward, refresh, wait, text, url, js, close
  */
 
 const http = require('http');
@@ -186,7 +186,7 @@ async function buildSnapshot(page, refs) {
       '[role="link"]',
       '[role="checkbox"]',
       '[role="tab"]',
-      '[contenteditable="true"]',
+      '[contenteditable]:not([contenteditable="false"])',
     ];
 
     const seen = new Set();
@@ -278,6 +278,9 @@ async function buildSnapshot(page, refs) {
           description = `tab "${text || ariaLabel}"`;
         } else if (role === 'link') {
           description = `link "${text || ariaLabel}"`;
+        } else if (el.getAttribute('contenteditable') !== null && el.getAttribute('contenteditable') !== 'false') {
+          const label = ariaLabel || el.getAttribute('aria-describedby') || tag;
+          description = `editor "${label}" (rich text, use "js" command to set content)`;
         } else {
           description = `${tag}[${role || 'interactive'}] "${text || ariaLabel}"`;
         }
@@ -400,7 +403,13 @@ async function handleCommand(userId, command, args) {
       const text = args.slice(1).join(' ');
       const el = await resolveRef(page, refs, refNum);
       await el.click({ clickCount: 3 }); // select all
-      await el.type(text);
+      try {
+        await el.type(text);
+      } catch (e) {
+        // Fallback for contenteditable: focus and use keyboard.type()
+        await el.click();
+        await page.keyboard.type(text);
+      }
       await saveSession(userId);
       const snapshot = await buildSnapshot(page, refs);
       return { result: snapshot };
@@ -411,7 +420,19 @@ async function handleCommand(userId, command, args) {
       if (isNaN(refNum) || args.length < 2) return { error: 'Usage: fill <ref> <text>' };
       const text = args.slice(1).join(' ');
       const el = await resolveRef(page, refs, refNum);
-      await el.fill(text);
+      // Contenteditable elements don't support Playwright's fill() — use innerHTML
+      const isContentEditable = await el.evaluate(e =>
+        e.getAttribute('contenteditable') !== null && e.getAttribute('contenteditable') !== 'false'
+      );
+      if (isContentEditable) {
+        await el.evaluate((e, val) => {
+          e.innerHTML = val;
+          e.dispatchEvent(new Event('input', { bubbles: true }));
+          e.dispatchEvent(new Event('change', { bubbles: true }));
+        }, text);
+      } else {
+        await el.fill(text);
+      }
       await saveSession(userId);
       const snapshot = await buildSnapshot(page, refs);
       return { result: snapshot };
@@ -504,13 +525,29 @@ async function handleCommand(userId, command, args) {
       return { result: page.url() };
     }
 
+    case 'js': {
+      const code = args.join(' ');
+      if (!code) return { error: 'Usage: js <javascript code>' };
+      const result = await page.evaluate((code) => {
+        try {
+          const r = eval(code);
+          return { ok: true, result: String(r ?? '(undefined)').slice(0, 5000) };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      }, code);
+      if (!result.ok) return { error: `JS error: ${result.error}` };
+      await saveSession(userId);
+      return { result: result.result };
+    }
+
     case 'close': {
       await closeSession(userId);
       return { result: 'Browser session closed.' };
     }
 
     default:
-      return { error: `Unknown command: ${command}. Available: open, snapshot, click, type, fill, select, check, uncheck, scroll, back, forward, refresh, wait, text, url, close` };
+      return { error: `Unknown command: ${command}. Available: open, snapshot, click, type, fill, select, check, uncheck, scroll, back, forward, refresh, wait, text, url, js, close` };
   }
 }
 

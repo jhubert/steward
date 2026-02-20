@@ -23,6 +23,12 @@ function parseCommand(input) {
   const parts = trimmed.split(/\s+/);
   const command = parts[0].toLowerCase();
 
+  // For js: everything after "js" is one code argument
+  if (command === 'js') {
+    const code = trimmed.slice(trimmed.indexOf(' ') + 1).trim();
+    return { command, args: code ? [code] : [] };
+  }
+
   // For type/fill/select: everything after the ref is one text argument
   if (['type', 'fill', 'select'].includes(command) && parts.length >= 3) {
     const ref = parts[1];

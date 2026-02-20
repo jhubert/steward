@@ -26,6 +26,7 @@ You have a **browser** tool that controls a real Chromium browser. Unlike `brows
 | `wait` | `wait` | Wait 2 seconds for content to load |
 | `text` | `text` | Get full page text content (no refs) |
 | `url` | `url` | Get current page URL |
+| `js <code>` | `js document.title` | Run JavaScript on the page |
 | `close` | `close` | Close browser session |
 
 ## Workflow
@@ -43,10 +44,22 @@ You have a **browser** tool that controls a real Chromium browser. Unlike `brows
 - **For login flows**: open the login page → fill email/password fields → click the submit button. Check the snapshot to see if login succeeded.
 - **If a page has too many elements**, only the first 100 are shown. Use `text` to read the full page content.
 
+## Rich Text Editors (Trix, ProseMirror, TinyMCE, etc.)
+
+Rich text editors use `contenteditable` divs instead of `<input>`/`<textarea>`. They appear in snapshots as `editor "..." (rich text, use "js" command to set content)`. To interact with them:
+
+- **Trix** (used by Basecamp, Hey): `js document.querySelector('trix-editor').editor.loadHTML('<p>Your content here</p>')`
+- **ProseMirror**: `js document.querySelector('.ProseMirror').innerHTML = '<p>Content</p>'`
+- **Generic contenteditable**: `js document.querySelector('[contenteditable]').innerHTML = '<p>Content</p>'`
+- **Read current content**: `js document.querySelector('trix-editor').innerHTML`
+
+You can also use `fill <ref> <html>` on contenteditable elements — it sets innerHTML directly.
+
 ## Tips
 
 - Use `fill` for form inputs (it properly triggers change events)
 - Use `type` when you need to simulate actual key-by-key typing
+- Use `js` to interact with custom editors or run arbitrary JavaScript on the page
 - Use `snapshot` to refresh your view if the page changed dynamically
 - Use `wait` before `snapshot` if content loads asynchronously
 - Use `text` to read long page content without interactive element overhead
