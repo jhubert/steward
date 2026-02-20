@@ -260,4 +260,80 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
 
     assert_includes system_content, 'EST'
   end
+
+  test 'includes background activity briefing when background conversation has recent activity' do
+    agent = @conversation.agent
+    user = @conversation.user
+
+    bg_conversation = Conversation.find_or_start(
+      user: user,
+      agent: agent,
+      channel: "background",
+      external_thread_key: "background:#{agent.id}:#{user.id}"
+    )
+    bg_conversation.ensure_state!
+    bg_conversation.messages.create!(
+      workspace: workspaces(:default), user: user,
+      role: 'user', content: 'New email from boss@example.com about Q1 report'
+    )
+    bg_conversation.messages.create!(
+      workspace: workspaces(:default), user: user,
+      role: 'assistant', content: 'I found an email about the Q1 report deadline.'
+    )
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Background Activity Briefing'
+    assert_includes system_content, 'Q1 report'
+  end
+
+  test 'omits background activity briefing when no background conversation exists' do
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, 'Background Activity Briefing'
+  end
+
+  test 'omits background activity briefing when background is stale' do
+    agent = @conversation.agent
+    user = @conversation.user
+
+    bg_conversation = Conversation.find_or_start(
+      user: user,
+      agent: agent,
+      channel: "background",
+      external_thread_key: "background:#{agent.id}:#{user.id}"
+    )
+    bg_conversation.ensure_state!
+    bg_conversation.messages.create!(
+      workspace: workspaces(:default), user: user,
+      role: 'assistant', content: 'Old background activity',
+      created_at: 25.hours.ago
+    )
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, 'Background Activity Briefing'
+  end
+
+  test 'omits background activity briefing for background conversations themselves' do
+    bg_conversation = Conversation.find_or_start(
+      user: users(:alice),
+      agent: agents(:steward),
+      channel: "background",
+      external_thread_key: "background:self_test"
+    )
+    bg_conversation.ensure_state!
+    bg_conversation.messages.create!(
+      workspace: workspaces(:default), user: users(:alice),
+      role: 'user', content: 'Background trigger'
+    )
+
+    messages = Prompt::Assembler.new(bg_conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, 'Background Activity Briefing'
+  end
 end

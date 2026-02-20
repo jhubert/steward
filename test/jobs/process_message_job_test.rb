@@ -778,6 +778,41 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_match(/delivered/, tool_content[:content])
   end
 
+  test 'send_message stores context in metadata when provided' do
+    agent = agents(:jennifer)
+    user = users(:alice)
+
+    bg_conversation = Conversation.find_or_start(
+      user: user, agent: agent, channel: "background",
+      external_thread_key: "background:#{agent.id}:#{user.id}"
+    )
+    bg_message = bg_conversation.messages.create!(
+      workspace: workspaces(:default), user: user,
+      role: 'user', content: 'New event received'
+    )
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'send_message',
+      tool_id: 'toolu_send_ctx',
+      input: { 'text' => 'You have a dinner invitation!', 'context' => 'Found dinner invitation email from Sarah for Friday' }
+    )
+    text_response = build_text_response('Done, notified the user.')
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    telegram_adapter = stub(send_typing: true, send_reply: true)
+    Adapters::Telegram.stubs(:new).returns(telegram_adapter)
+
+    ProcessMessageJob.perform_now(bg_message.id)
+
+    telegram_conv = conversations(:alice_jennifer)
+    sent_msg = telegram_conv.messages.where(role: 'assistant').order(:id).last
+    assert_equal 'background', sent_msg.metadata['source']
+    assert_equal 'Found dinner invitation email from Sarah for Friday', sent_msg.metadata['background_context']
+  end
+
   test 'send_message returns error when no Telegram conversation exists' do
     agent = agents(:steward)
     user = users(:bob)

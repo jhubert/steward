@@ -32,6 +32,7 @@ module Prompt
       parts << conversation_state if has_conversation_state?
       parts << long_term_recall if @incoming_message.present?
       parts << thread_catalog
+      parts << background_activity_briefing unless @conversation.background?
       parts << background_context if @conversation.background?
       parts.compact.join("\n\n---\n\n")
     end
@@ -200,6 +201,64 @@ module Prompt
       "To notify the user, call the `send_message` tool. " \
       "Only send a message if the event is important enough to warrant interrupting them — " \
       "otherwise, take any needed actions (save notes, use tools) silently."
+    end
+
+    BACKGROUND_STALENESS_HOURS = 24
+
+    def background_activity_briefing
+      bg_conversation = find_background_conversation
+      return nil unless bg_conversation
+
+      last_bg_message = bg_conversation.messages.chronological.last
+      return nil unless last_bg_message
+      return nil if last_bg_message.created_at < BACKGROUND_STALENESS_HOURS.hours.ago
+
+      char_budget = (@budgets['background_activity'] || 800) * 4
+      parts = []
+
+      # Background state summary (compacted history)
+      bg_state = bg_conversation.state
+      if bg_state&.summary.present?
+        parts << "### Background Summary\n#{bg_state.summary.truncate(char_budget / 4)}"
+      end
+
+      # Recent tool log entries
+      if bg_state&.tool_log.present? && bg_state.tool_log.any?
+        entries = bg_state.tool_log.last(3).map { |entry| format_tool_log_entry(entry) }
+        parts << "### Recent Background Tool Activity\n#{entries.join("\n\n")}"
+      end
+
+      # Background scratchpad
+      if bg_state&.scratchpad.present?
+        parts << "### Background Working Notes\n#{bg_state.scratchpad.truncate(char_budget / 4)}"
+      end
+
+      # Recent background messages (freshest context)
+      recent_msgs = bg_conversation.messages.chronological.last(10)
+      if recent_msgs.any?
+        lines = recent_msgs.map do |msg|
+          timestamp = msg.created_at.strftime('%H:%M')
+          role_label = msg.role == 'user' ? 'trigger' : 'assistant'
+          "[#{timestamp}] #{role_label}: #{msg.content.to_s.truncate(300)}"
+        end
+        parts << "### Recent Background Messages\n#{lines.join("\n")}"
+      end
+
+      return nil if parts.empty?
+
+      briefing = parts.join("\n\n").truncate(char_budget)
+      "## Background Activity Briefing\n" \
+      "Your background process has been working autonomously. Here's what it's been doing — " \
+      "use this to understand any references the user makes to background activity.\n\n#{briefing}"
+    end
+
+    def find_background_conversation
+      Conversation.find_by(
+        workspace: @conversation.workspace,
+        user: @conversation.user,
+        agent: @conversation.agent,
+        channel: "background"
+      )
     end
 
     # How many messages before the summary cutoff to keep as overlap.

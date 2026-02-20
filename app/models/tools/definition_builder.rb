@@ -134,7 +134,8 @@ module Tools
       input_schema: {
         "type" => "object",
         "properties" => {
-          "text" => { "type" => "string", "description" => "The message text to send to the user" }
+          "text" => { "type" => "string", "description" => "The message text to send to the user" },
+          "context" => { "type" => "string", "description" => "Brief summary of what background activity prompted this message (e.g., 'Found urgent email from CEO about deadline change'). This context is stored so the user's reply can be understood in context." }
         },
         "required" => ["text"]
       }

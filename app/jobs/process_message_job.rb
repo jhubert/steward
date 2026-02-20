@@ -495,6 +495,7 @@ class ProcessMessageJob < ApplicationJob
 
   def execute_send_message(input, conversation)
     text = input["text"].to_s.strip
+    context_summary = input["context"].to_s.strip.presence
 
     if text.blank?
       return virtual_result("send_message", "Error: 'text' parameter is required.")
@@ -512,12 +513,15 @@ class ProcessMessageJob < ApplicationJob
       return virtual_result("send_message", "Error: No Telegram conversation found for this user and agent. The user hasn't talked to this agent on Telegram yet.")
     end
 
+    msg_metadata = { source: "background", background_conversation_id: conversation.id }
+    msg_metadata[:background_context] = context_summary if context_summary
+
     msg = telegram_conv.messages.create!(
       workspace: conversation.workspace,
       user: user,
       role: "assistant",
       content: text,
-      metadata: { source: "background", background_conversation_id: conversation.id }
+      metadata: msg_metadata
     )
 
     begin
