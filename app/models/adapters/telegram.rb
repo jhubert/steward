@@ -49,20 +49,35 @@ module Adapters
       )
     end
 
+    MAX_MESSAGE_LENGTH = 4096
+
     def send_reply(conversation, message)
       chat_id = conversation.external_thread_key
 
+      chunks = split_message(message.content)
+      response = nil
+
+      chunks.each do |chunk|
+        response = send_text(chat_id, chunk)
+      end
+
+      response
+    end
+
+    private
+
+    def send_text(chat_id, text)
       # Try Markdown first, fall back to plain text if Telegram can't parse it
       response = HTTPX.post(
         "#{API_BASE}/bot#{@bot_token}/sendMessage",
-        json: { chat_id: chat_id, text: message.content, parse_mode: 'Markdown' }
+        json: { chat_id: chat_id, text: text, parse_mode: 'Markdown' }
       )
 
       if response.status != 200
         Rails.logger.warn("[Telegram] Markdown failed, retrying as plain text: #{response.body}")
         response = HTTPX.post(
           "#{API_BASE}/bot#{@bot_token}/sendMessage",
-          json: { chat_id: chat_id, text: message.content }
+          json: { chat_id: chat_id, text: text }
         )
       end
 
@@ -71,6 +86,27 @@ module Adapters
       end
 
       response
+    end
+
+    def split_message(text)
+      return [text] if text.length <= MAX_MESSAGE_LENGTH
+
+      chunks = []
+      remaining = text
+
+      while remaining.length > MAX_MESSAGE_LENGTH
+        # Find a good split point: prefer double newline, then single newline, then space
+        split_at = remaining.rindex("\n\n", MAX_MESSAGE_LENGTH) ||
+                   remaining.rindex("\n", MAX_MESSAGE_LENGTH) ||
+                   remaining.rindex(" ", MAX_MESSAGE_LENGTH) ||
+                   MAX_MESSAGE_LENGTH
+
+        chunks << remaining[0...split_at]
+        remaining = remaining[split_at..].lstrip
+      end
+
+      chunks << remaining unless remaining.empty?
+      chunks
     end
   end
 end
