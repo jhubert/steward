@@ -79,7 +79,9 @@ module Prompt
       "list_scheduled_tasks" => "List active scheduled tasks. Use when the user asks what's scheduled or wants to review their reminders.",
       "cancel_scheduled_task" => "Cancel a scheduled task. Use when the user wants to stop a reminder or recurring task.",
       "github" => "Access GitHub via the `gh` CLI. Can list/view/create PRs, issues, releases, search code, and call the GitHub API. Pass the full subcommand without the `gh` prefix (e.g. `pr list --repo owner/repo`).",
-      "send_message" => "Send a message to the user via Telegram. Only available in background processing mode. Use sparingly — only for events important enough to interrupt the user."
+      "send_message" => "Send a message to the user via Telegram. Only available in background processing mode. Use sparingly — only for events important enough to interrupt the user.",
+      "recall" => "Search your long-term memory with a targeted query. Use when you need to remember something specific — a past decision, preference, or fact — that isn't in your current context.",
+      "read_transcript" => "Read the original conversation messages that produced a memory. Use after `recall` to get full context around a remembered fact."
     }.freeze
 
     def capabilities_context
@@ -95,7 +97,7 @@ module Prompt
       end
 
       # Builtin tools with hints (skip save_note/read_notes/google_setup — the LLM already understands those from the schema)
-      %w[download_file schedule_task list_scheduled_tasks cancel_scheduled_task].each do |name|
+      %w[download_file schedule_task list_scheduled_tasks cancel_scheduled_task recall read_transcript].each do |name|
         lines << "- **#{name}**: #{CAPABILITY_HINTS[name]}"
       end
 

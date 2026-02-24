@@ -1198,6 +1198,250 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     Skills::Registry.instance.reload!
   end
 
+  # --- recall virtual tool tests ---
+
+  test 'recall virtual tool returns formatted memory results' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'recall',
+      tool_id: 'toolu_recall',
+      input: { 'query' => 'morning meetings' }
+    )
+    text_response = build_text_response('You prefer morning meetings.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/morning meetings/, tool_content[:content])
+    assert_match(/preference/, tool_content[:content])
+    assert_match(/Found \d+ memor/, tool_content[:content])
+  end
+
+  test 'recall virtual tool filters by category' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'recall',
+      tool_id: 'toolu_recall_cat',
+      input: { 'query' => 'Alice', 'category' => 'fact' }
+    )
+    text_response = build_text_response('Found facts.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/fact/, tool_content[:content])
+    assert_match(/Toronto/, tool_content[:content])
+    # Should NOT include the preference about morning meetings
+    assert_no_match(/morning meetings/, tool_content[:content])
+  end
+
+  test 'recall in principal mode searches across all principals' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'recall',
+      tool_id: 'toolu_recall_principal',
+      input: { 'query' => 'operations team' }
+    )
+    text_response = build_text_response('Bob manages the operations team.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    # Jennifer is a principal-mode agent — search should find Bob's memories too
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/operations team/, tool_content[:content])
+    assert_match(/Bob's memory/, tool_content[:content])
+  end
+
+  test 'recall returns no-results message when nothing matches' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'recall',
+      tool_id: 'toolu_recall_empty',
+      input: { 'query' => 'xyznonexistent' }
+    )
+    text_response = build_text_response('I don\'t recall that.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/No memories found/, tool_content[:content])
+  end
+
+  # --- read_transcript virtual tool tests ---
+
+  test 'read_transcript reads messages from current conversation' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'read_transcript',
+      tool_id: 'toolu_transcript',
+      input: {}
+    )
+    text_response = build_text_response('Here is the transcript.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Transcript from conversation/, tool_content[:content])
+    assert_match(/what's on the agenda/, tool_content[:content])
+  end
+
+  test 'read_transcript reads from a specific conversation belonging to the same user' do
+    # Alice reads from her steward conversation while talking to Jennifer
+    target_conv = conversations(:alice_telegram)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'read_transcript',
+      tool_id: 'toolu_transcript_specific',
+      input: { 'conversation_id' => target_conv.id }
+    )
+    text_response = build_text_response('Found messages.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Transcript from conversation #{target_conv.id}/, tool_content[:content])
+    assert_match(/Hello, Steward/, tool_content[:content])
+  end
+
+  test 'read_transcript rejects cross-user conversation access' do
+    # Alice tries to read Bob's conversation
+    bob_conv = conversations(:bob_jennifer)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'read_transcript',
+      tool_id: 'toolu_transcript_denied',
+      input: { 'conversation_id' => bob_conv.id }
+    )
+    text_response = build_text_response('Access denied.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/not found or access denied/, tool_content[:content])
+  end
+
+  test 'read_transcript with date filters returns filtered messages' do
+    # Set message timestamps to known values
+    msg = messages(:alice_jennifer_hello)
+    msg.update_column(:created_at, Time.parse('2025-06-15T10:00:00Z'))
+    messages(:jennifer_reply_alice).update_column(:created_at, Time.parse('2025-06-15T10:01:00Z'))
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'read_transcript',
+      tool_id: 'toolu_transcript_date',
+      input: { 'after' => '2025-06-15T09:59:00Z', 'before' => '2025-06-15T10:02:00Z' }
+    )
+    text_response = build_text_response('Filtered transcript.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Transcript from conversation/, tool_content[:content])
+  end
+
   test 'agents without agent-specific tools still get builtin tools' do
     stub_text_response('Hi there!')
 

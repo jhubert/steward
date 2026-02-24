@@ -125,6 +125,35 @@ module Tools
           },
           "required" => ["skill_name", "description", "instructions"]
         }
+      },
+      {
+        name: "recall",
+        description: "Search your long-term memory with a targeted query. Use when you need to remember something specific — a past decision, preference, or fact — that isn't in your current context. Returns matching memories with source references you can follow up on with read_transcript.",
+        input_schema: {
+          "type" => "object",
+          "properties" => {
+            "query" => { "type" => "string", "description" => "Targeted search query describing what you want to remember" },
+            "category" => {
+              "type" => "string",
+              "enum" => ["decision", "preference", "fact", "commitment"],
+              "description" => "Optional: filter results to a specific memory type"
+            }
+          },
+          "required" => ["query"]
+        }
+      },
+      {
+        name: "read_transcript",
+        description: "Read original conversation messages. Use after `recall` to get full context around a remembered fact, or to review earlier parts of any conversation.",
+        input_schema: {
+          "type" => "object",
+          "properties" => {
+            "message_id" => { "type" => "integer", "description" => "Center point message ID to read around (from recall results)" },
+            "conversation_id" => { "type" => "integer", "description" => "Which conversation to read from (defaults to current conversation)" },
+            "before" => { "type" => "string", "description" => "Only include messages before this ISO datetime" },
+            "after" => { "type" => "string", "description" => "Only include messages after this ISO datetime" }
+          }
+        }
       }
     ].freeze
 

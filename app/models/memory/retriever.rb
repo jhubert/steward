@@ -19,13 +19,34 @@ module Memory
       format(merged)
     end
 
+    # Returns raw MemoryItem records matching the query.
+    # Used by the recall virtual tool for richer output formatting.
+    # Options:
+    #   category: filter by memory category (decision/preference/fact/commitment)
+    #   user_ids: search across multiple users (for principal mode)
+    def search(query:, category: nil, user_ids: nil)
+      scope_override = if user_ids.present?
+        MemoryItem.where(workspace: @workspace, user_id: user_ids)
+      else
+        base_scope
+      end
+
+      scope_override = scope_override.where(category: category) if category.present?
+
+      semantic = semantic_search(query, scope: scope_override)
+      keyword = keyword_search(query, scope: scope_override)
+
+      merge_and_rank(semantic, keyword)
+    end
+
     private
 
     def base_scope
       MemoryItem.where(workspace: @workspace, user: @user)
     end
 
-    def semantic_search(query)
+    def semantic_search(query, scope: nil)
+      scope ||= base_scope
       client = Rails.configuration.openai_client
       return [] if client.nil?
 
@@ -36,7 +57,7 @@ module Memory
       query_vec = response.dig("data", 0, "embedding")
       return [] unless query_vec
 
-      base_scope
+      scope
         .with_embedding
         .nearest_neighbors(:embedding, query_vec, distance: :cosine)
         .limit(20)
@@ -46,14 +67,15 @@ module Memory
       []
     end
 
-    def keyword_search(query)
+    def keyword_search(query, scope: nil)
+      scope ||= base_scope
       words = query.split(/\s+/).select { |w| w.length > 2 }.first(5)
       return [] if words.empty?
 
       conditions = words.map { "content ILIKE ?" }.join(" OR ")
       values = words.map { |w| "%#{sanitize_like(w)}%" }
 
-      base_scope
+      scope
         .where(conditions, *values)
         .order(created_at: :desc)
         .limit(20)

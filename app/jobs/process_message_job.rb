@@ -83,6 +83,7 @@ class ProcessMessageJob < ApplicationJob
     total_output_tokens = 0
     tool_call_summaries = []
     tool_log_rounds = []
+    response = nil
     reply_text = nil
     response_model = nil
     started_at = Time.current
@@ -102,6 +103,12 @@ class ProcessMessageJob < ApplicationJob
       response_model = response.model
       total_input_tokens += response.usage.input_tokens
       total_output_tokens += response.usage.output_tokens
+
+      if response.stop_reason.to_s == 'refusal'
+        Rails.logger.warn("[ProcessMessageJob] Model refused to respond (conversation #{conversation.id})")
+        reply_text = "I'm sorry, I wasn't able to process this message — the model flagged the content and declined to respond. This may be a false positive. You could try rephrasing, or the message may be processed on a subsequent attempt."
+        break
+      end
 
       if response.stop_reason.to_s == 'tool_use'
         rounds += 1
@@ -313,6 +320,10 @@ class ProcessMessageJob < ApplicationJob
       execute_send_message(input, conversation)
     when "create_skill"
       execute_create_skill(input, conversation)
+    when "recall"
+      execute_recall(input, conversation)
+    when "read_transcript"
+      execute_read_transcript(input, conversation)
     end
   end
 
@@ -630,6 +641,140 @@ class ProcessMessageJob < ApplicationJob
     end
 
     virtual_result("create_skill", "Skill '#{skill_name}' created successfully.\nFiles: #{created_files.join(', ')}#{enable_message}", input: skill_name)
+  end
+
+  def execute_recall(input, conversation)
+    query = input["query"].to_s.strip
+    category = input["category"]&.strip.presence
+
+    if query.blank?
+      return virtual_result("recall", "Error: 'query' parameter is required.")
+    end
+
+    if category.present? && !Memory::Extractor::VALID_CATEGORIES.include?(category)
+      return virtual_result("recall", "Error: Invalid category '#{category}'. Must be one of: #{Memory::Extractor::VALID_CATEGORIES.join(', ')}.")
+    end
+
+    agent = conversation.agent
+    retriever = Memory::Retriever.new(conversation, budget: 2000)
+
+    # In principal mode, search across all principals' memories
+    user_ids = if agent.principal_mode?
+      agent.agent_principals.pluck(:user_id)
+    else
+      nil
+    end
+
+    items = retriever.search(query: query, category: category, user_ids: user_ids)
+
+    if items.empty?
+      return virtual_result("recall", "No memories found matching '#{query}'.", input: query.truncate(200))
+    end
+
+    # Build user lookup for principal mode labeling
+    user_names = {}
+    if agent.principal_mode?
+      agent.agent_principals.includes(:user).each do |ap|
+        user_names[ap.user_id] = ap.display_name || ap.user.name
+      end
+    end
+
+    # Format results with source references
+    char_limit = 2000 * 4
+    chars_used = 0
+    lines = []
+
+    items.each do |item|
+      date = item.created_at.strftime('%Y-%m-%d')
+      line = "- [#{item.category}] #{item.content} (#{date})"
+      line += " — #{user_names[item.user_id]}'s memory" if user_names.key?(item.user_id) && user_ids&.size.to_i > 1
+      if item.conversation_id
+        line += " [source: conversation=#{item.conversation_id}"
+        if item.metadata&.dig("source_message_range")
+          line += " messages=#{item.metadata['source_message_range']}"
+        end
+        line += "]"
+      end
+      break if chars_used + line.length > char_limit
+      chars_used += line.length
+      lines << line
+    end
+
+    virtual_result("recall", "Found #{items.size} memor#{items.size == 1 ? 'y' : 'ies'}:\n#{lines.join("\n")}", input: query.truncate(200))
+  end
+
+  def execute_read_transcript(input, conversation)
+    message_id = input["message_id"]
+    conversation_id = input["conversation_id"]
+    before_str = input["before"]&.strip.presence
+    after_str = input["after"]&.strip.presence
+
+    # Resolve target conversation
+    target = if conversation_id.present?
+      Conversation.find_by(
+        id: conversation_id,
+        workspace: conversation.workspace,
+        user: conversation.user
+      )
+    else
+      conversation
+    end
+
+    unless target
+      return virtual_result("read_transcript", "Error: Conversation not found or access denied.")
+    end
+
+    # Build query
+    scope = target.messages.chronological
+
+    if message_id.present?
+      # Read a window around the specified message
+      scope = scope.where("id >= ? AND id <= ?", message_id.to_i - 25, message_id.to_i + 25)
+    end
+
+    if before_str.present?
+      begin
+        before_time = Time.parse(before_str)
+        scope = scope.where("created_at < ?", before_time)
+      rescue ArgumentError
+        return virtual_result("read_transcript", "Error: Invalid 'before' datetime '#{before_str}'. Use ISO 8601 format.")
+      end
+    end
+
+    if after_str.present?
+      begin
+        after_time = Time.parse(after_str)
+        scope = scope.where("created_at > ?", after_time)
+      rescue ArgumentError
+        return virtual_result("read_transcript", "Error: Invalid 'after' datetime '#{after_str}'. Use ISO 8601 format.")
+      end
+    end
+
+    messages = scope.limit(50).to_a
+
+    if messages.empty?
+      return virtual_result("read_transcript", "No messages found matching the criteria.")
+    end
+
+    # Format as readable transcript, capped at ~4000 chars
+    char_limit = 4000
+    chars_used = 0
+    lines = []
+
+    messages.each do |msg|
+      timestamp = msg.created_at.strftime('%Y-%m-%d %H:%M')
+      content = msg.content.to_s.truncate(500)
+      line = "[#{timestamp}] #{msg.role}: #{content}"
+      break if chars_used + line.length > char_limit
+      chars_used += line.length
+      lines << line
+    end
+
+    header = "Transcript from conversation #{target.id}"
+    header += " (#{target.title})" if target.title.present?
+    header += " — #{lines.size} of #{messages.size} messages"
+
+    virtual_result("read_transcript", "#{header}:\n#{lines.join("\n")}", input: "conversation=#{target.id}")
   end
 
   def virtual_result(tool_name, content, input: nil)

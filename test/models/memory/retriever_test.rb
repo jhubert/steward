@@ -80,6 +80,52 @@ class Memory::RetrieverTest < ActiveSupport::TestCase
     assert_includes result, "morning meetings"
   end
 
+  # --- search method tests (used by recall tool) ---
+
+  test 'search returns raw MemoryItem records' do
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    items = Memory::Retriever.new(@conversation, budget: 800).search(query: "morning meetings")
+    assert_kind_of Array, items
+    assert items.all? { |i| i.is_a?(MemoryItem) }
+    assert items.any? { |i| i.content.include?("morning meetings") }
+  end
+
+  test 'search filters by category' do
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    # alice_preference is "preference", alice_fact is "fact"
+    items = Memory::Retriever.new(@conversation, budget: 800).search(query: "Alice", category: "preference")
+    assert items.all? { |i| i.category == "preference" }
+  end
+
+  test 'search with user_ids finds items across multiple users' do
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    alice_id = users(:alice).id
+    bob_id = users(:bob).id
+
+    items = Memory::Retriever.new(@conversation, budget: 800).search(
+      query: "operations team",
+      user_ids: [alice_id, bob_id]
+    )
+    assert items.any? { |i| i.content.include?("operations team") }
+  end
+
+  test 'search without user_ids respects user isolation' do
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    items = Memory::Retriever.new(@conversation, budget: 800).search(query: "operations team")
+    assert_empty items
+  end
+
+  test 'search returns empty array when no matches' do
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    items = Memory::Retriever.new(@conversation, budget: 800).search(query: "xyznonexistent")
+    assert_equal [], items
+  end
+
   test 'cross-thread retrieval finds items from other conversations' do
     # Create a memory item from alice's jennifer conversation
     MemoryItem.create!(
