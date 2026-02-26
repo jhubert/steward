@@ -508,8 +508,7 @@ class ProcessMessageJob < ApplicationJob
     end
 
     downloader = Tools::FileDownloader.new(
-      agent_id: conversation.agent_id,
-      conversation_id: conversation.id
+      user_id: conversation.user_id
     )
     result = downloader.call(url, filename: filename)
 

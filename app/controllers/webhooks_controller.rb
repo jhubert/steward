@@ -57,8 +57,7 @@ class WebhooksController < ActionController::API
       downloader = Adapters::Telegram::MediaDownloader.new(bot_token: agent.telegram_bot_token)
       attachments = downloader.call(
         normalized[:raw_message],
-        agent_id: agent.id,
-        conversation_id: conversation.id
+        user_id: user.id
       )
     end
 

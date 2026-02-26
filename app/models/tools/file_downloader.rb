@@ -18,9 +18,8 @@ module Tools
       IPAddr.new("fe80::/10")
     ].freeze
 
-    def initialize(agent_id:, conversation_id:)
-      @agent_id = agent_id
-      @conversation_id = conversation_id
+    def initialize(user_id:)
+      @user_id = user_id
     end
 
     def call(url, filename: nil)
@@ -90,7 +89,7 @@ module Tools
     end
 
     def storage_dir
-      Rails.root.join("data", "downloads", @agent_id.to_s, @conversation_id.to_s).to_s
+      Rails.root.join("data", "users", @user_id.to_s, "files").to_s
     end
   end
 end

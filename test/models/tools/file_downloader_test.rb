@@ -3,11 +3,11 @@ require "test_helper"
 class Tools::FileDownloaderTest < ActiveSupport::TestCase
   setup do
     as_workspace(:default)
-    @downloader = Tools::FileDownloader.new(agent_id: 1, conversation_id: 1)
+    @downloader = Tools::FileDownloader.new(user_id: 1)
   end
 
   teardown do
-    FileUtils.rm_rf(Rails.root.join("data", "downloads", "1"))
+    FileUtils.rm_rf(Rails.root.join("data", "users", "1"))
   end
 
   test "rejects non-http schemes" do
@@ -95,7 +95,7 @@ class Tools::FileDownloaderTest < ActiveSupport::TestCase
     assert_equal 17, result.size
     assert File.exist?(result.path)
     assert_equal "file content here", File.read(result.path)
-    assert_match %r{data/downloads/1/1/report\.pdf$}, result.path
+    assert_match %r{data/users/1/files/report\.pdf$}, result.path
   end
 
   test "successful download with custom filename" do
@@ -116,7 +116,7 @@ class Tools::FileDownloaderTest < ActiveSupport::TestCase
     result = @downloader.call("https://example.com/file.txt", filename: "../../../etc/passwd")
     assert_equal true, result.success
     assert_no_match %r{\.\.}, result.path
-    assert_match %r{data/downloads/1/1/}, result.path
+    assert_match %r{data/users/1/files/}, result.path
   end
 
   test "sanitizes dotfiles" do

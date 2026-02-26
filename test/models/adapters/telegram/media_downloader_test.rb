@@ -4,17 +4,16 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
   setup do
     as_workspace(:default)
     @downloader = Adapters::Telegram::MediaDownloader.new(bot_token: "test-token")
-    @agent_id = agents(:steward).id
-    @conversation_id = conversations(:alice_telegram).id
+    @user_id = users(:alice).id
   end
 
   teardown do
-    FileUtils.rm_rf(Rails.root.join("data", "telegram_media", @agent_id.to_s))
+    FileUtils.rm_rf(Rails.root.join("data", "users", @user_id.to_s))
   end
 
   test "returns empty array for text-only message" do
     message = { "text" => "Hello!" }
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
     assert_equal [], result
   end
 
@@ -28,7 +27,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
 
     stub_telegram_file_download("large_id", "photos/file_1.jpg", "fake-jpeg-data")
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
     assert_equal 1, result.size
     att = result.first
@@ -52,7 +51,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
 
     stub_telegram_file_download("doc_id", "documents/file_2.pdf", "fake-pdf-data")
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
     assert_equal 1, result.size
     att = result.first
@@ -72,13 +71,13 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
 
     stub_telegram_file_download("img_doc_id", "documents/file_3.png", "fake-png-data")
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
     assert_equal 1, result.size
     assert_equal "image", result.first.type
   end
 
-  test "unsupported document type returns description attachment" do
+  test "non-PDF non-image document returns file attachment" do
     message = {
       "document" => {
         "file_id" => "zip_id",
@@ -89,11 +88,13 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
 
     stub_telegram_file_download("zip_id", "documents/file_4.zip", "fake-zip-data")
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
-    # application/zip → "description" type, still downloads to disk
     assert_equal 1, result.size
-    assert_equal "description", result.first.type
+    att = result.first
+    assert_equal "file", att.type
+    assert File.exist?(att.file_path)
+    assert_equal "[File: archive.zip (application/zip)]", att.metadata[:description]
   end
 
   test "skips animated stickers" do
@@ -105,7 +106,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
       }
     }
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
     assert_equal [], result
   end
 
@@ -118,7 +119,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
       }
     }
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
     assert_equal [], result
   end
 
@@ -135,7 +136,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
 
     stub_telegram_file_download("sticker_id", "stickers/file_5.webp", "fake-webp-data")
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
     assert_equal 1, result.size
     att = result.first
@@ -152,7 +153,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
       }
     }
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
     assert_equal 1, result.size
     att = result.first
@@ -170,7 +171,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
       }
     }
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
     assert_equal 1, result.size
     att = result.first
@@ -186,7 +187,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
       }
     }
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
     assert_equal 1, result.size
     assert_equal "[Location: 48.8566, 2.3522]", result.first.metadata[:description]
@@ -201,7 +202,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
       }
     }
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
     assert_equal 1, result.size
     assert_equal "[Contact: John Doe, +1234567890]", result.first.metadata[:description]
@@ -220,7 +221,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
     )
     HTTPX.stubs(:get).returns(get_file_response)
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
     assert_equal [], result
   end
 
@@ -234,7 +235,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
     error_response = stub(status: 400, body: stub(to_s: '{"ok":false}'))
     HTTPX.stubs(:get).returns(error_response)
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
     assert_equal [], result
   end
 
@@ -248,7 +249,7 @@ class Adapters::Telegram::MediaDownloaderTest < ActiveSupport::TestCase
 
     stub_telegram_file_download("photo_id", "photos/file_6.jpg", "photo-data")
 
-    result = @downloader.call(message, agent_id: @agent_id, conversation_id: @conversation_id)
+    result = @downloader.call(message, user_id: @user_id)
 
     assert_equal 2, result.size
     types = result.map(&:type)

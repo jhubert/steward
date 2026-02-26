@@ -13,21 +13,21 @@ module Adapters
 
       # Accepts the raw Telegram message hash.
       # Returns an array of Attachment structs (may be empty).
-      def call(message, agent_id:, conversation_id:)
+      def call(message, user_id:)
         attachments = []
 
         if message["photo"]
-          att = process_photo(message["photo"], agent_id, conversation_id)
+          att = process_photo(message["photo"], user_id)
           attachments << att if att
         end
 
         if message["document"]
-          att = process_document(message["document"], agent_id, conversation_id)
+          att = process_document(message["document"], user_id)
           attachments << att if att
         end
 
         if message["sticker"]
-          att = process_sticker(message["sticker"], agent_id, conversation_id)
+          att = process_sticker(message["sticker"], user_id)
           attachments << att if att
         end
 
@@ -71,7 +71,7 @@ module Adapters
 
       private
 
-      def process_photo(photo_sizes, agent_id, conversation_id)
+      def process_photo(photo_sizes, user_id)
         # Pick the largest photo (last in the array)
         photo = photo_sizes.last
         return nil unless photo
@@ -81,28 +81,32 @@ module Adapters
           content_type: "image/jpeg",
           filename: "photo_#{photo['file_unique_id']}.jpg",
           type: "image",
-          agent_id: agent_id,
-          conversation_id: conversation_id,
+          user_id: user_id,
           metadata: { width: photo["width"], height: photo["height"] }
         )
       end
 
-      def process_document(doc, agent_id, conversation_id)
+      def process_document(doc, user_id)
         content_type = doc["mime_type"] || "application/octet-stream"
         filename = doc["file_name"] || "document"
+        type = detect_document_type(content_type)
+
+        metadata = {}
+        if type == "file"
+          metadata[:description] = "[File: #{filename} (#{content_type})]"
+        end
 
         download_file(
           file_id: doc["file_id"],
           content_type: content_type,
           filename: filename,
-          type: detect_document_type(content_type),
-          agent_id: agent_id,
-          conversation_id: conversation_id,
-          metadata: {}
+          type: type,
+          user_id: user_id,
+          metadata: metadata
         )
       end
 
-      def process_sticker(sticker, agent_id, conversation_id)
+      def process_sticker(sticker, user_id)
         # Skip animated and video stickers — they can't be sent as images
         return nil if sticker["is_animated"] || sticker["is_video"]
 
@@ -111,8 +115,7 @@ module Adapters
           content_type: "image/webp",
           filename: "sticker_#{sticker['file_unique_id']}.webp",
           type: "image",
-          agent_id: agent_id,
-          conversation_id: conversation_id,
+          user_id: user_id,
           metadata: { emoji: sticker["emoji"] }
         )
       end
@@ -210,7 +213,7 @@ module Adapters
         )
       end
 
-      def download_file(file_id:, content_type:, filename:, type:, agent_id:, conversation_id:, metadata:)
+      def download_file(file_id:, content_type:, filename:, type:, user_id:, metadata:)
         # Step 1: getFile to get the file_path
         get_file_response = HTTPX.get(
           "#{API_BASE}/bot#{@bot_token}/getFile",
@@ -246,10 +249,19 @@ module Adapters
         body = download_response.body.to_s
 
         # Step 3: Save to disk
-        dir = storage_dir(agent_id, conversation_id)
+        dir = storage_dir(user_id)
         FileUtils.mkdir_p(dir)
         safe_name = sanitize_filename(filename)
         path = File.join(dir, safe_name)
+
+        # Handle filename collisions by prepending timestamp
+        if File.exist?(path)
+          ext = File.extname(safe_name)
+          base = File.basename(safe_name, ext)
+          safe_name = "#{Time.current.strftime('%Y%m%d%H%M%S')}_#{base}#{ext}"
+          path = File.join(dir, safe_name)
+        end
+
         File.binwrite(path, body)
 
         Attachment.new(
@@ -272,7 +284,7 @@ module Adapters
         when /\Aimage\//
           "image"
         else
-          "description"
+          "file"
         end
       end
 
@@ -283,8 +295,8 @@ module Adapters
         safe[0, 255]
       end
 
-      def storage_dir(agent_id, conversation_id)
-        Rails.root.join("data", "telegram_media", agent_id.to_s, conversation_id.to_s).to_s
+      def storage_dir(user_id)
+        Rails.root.join("data", "users", user_id.to_s, "files").to_s
       end
     end
   end
