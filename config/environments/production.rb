@@ -62,4 +62,5 @@ Rails.application.configure do
 
   # Allow Caddy reverse proxy and Telegram webhook traffic.
   config.hosts << "steward.boardwise.co"
+  config.hosts << "withstuart.com"
 end

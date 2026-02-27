@@ -111,23 +111,18 @@ class WebhooksController < ActionController::API
 
     sender_email = normalized[:user_external_value]
 
-    # Three-tier user lookup: by external email key → by email field → create
-    user = User.find_by_external("email", sender_email)
-    user ||= User.find_by(workspace: workspace, email: sender_email)
+    # Find user by any known email, or create a new one
+    user = User.find_by_email_address(sender_email)
     user ||= User.create!(
       workspace: workspace,
       name: normalized[:user_name],
       email: sender_email,
-      external_ids: { "email" => sender_email }
+      external_ids: { "emails" => [sender_email] }
     )
 
-    # Backfill external_ids and email on existing users
-    if user.external_ids&.dig("email").blank?
-      user.update!(external_ids: (user.external_ids || {}).merge("email" => sender_email))
-    end
-    if user.email.blank?
-      user.update!(email: sender_email)
-    end
+    # Backfill: ensure this email is in their emails array
+    user.add_email!(sender_email)
+    user.update!(email: sender_email) if user.email.blank?
 
     conversation = Conversation.find_or_start(
       user: user,

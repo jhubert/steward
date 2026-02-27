@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title><%= content_for?(:title) ? yield(:title) : "Steward Admin" %></title>
+  <title><%= content_for?(:title) ? yield(:title) : "Stuart Admin" %></title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -103,7 +103,7 @@
 </head>
 <body>
   <div class="nav">
-    <span class="nav-title">Steward Admin</span>
+    <span class="nav-title">Stuart Admin</span>
     <div class="nav-links">
       <%= link_to "Agents", admin_agents_path, class: ("active" if controller_path.start_with?("admin/agent")) %>
       <%= link_to "Conversations", admin_conversations_path, class: ("active" if controller_path == "admin/conversations") %>
