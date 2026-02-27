@@ -88,6 +88,89 @@ class WebhooksController < ActionController::API
     head :ok
   end
 
+  # POST /webhooks/email
+  def email
+    server_token = Rails.application.credentials.dig(:postmark, :server_token)
+    adapter = Adapters::Email.new(server_token: server_token)
+    normalized = adapter.normalize(params.to_unsafe_h)
+
+    if normalized.nil? || normalized[:content].blank?
+      head :ok
+      return
+    end
+
+    agent = Agent.find_by_email_handle(normalized[:agent_handle])
+    unless agent
+      Rails.logger.error("[Webhook] Unknown email handle: #{normalized[:agent_handle]}")
+      head :ok
+      return
+    end
+
+    workspace = agent.workspace
+    Current.workspace = workspace
+
+    sender_email = normalized[:user_external_value]
+
+    # Three-tier user lookup: by external email key → by email field → create
+    user = User.find_by_external("email", sender_email)
+    user ||= User.find_by(workspace: workspace, email: sender_email)
+    user ||= User.create!(
+      workspace: workspace,
+      name: normalized[:user_name],
+      email: sender_email,
+      external_ids: { "email" => sender_email }
+    )
+
+    # Backfill external_ids and email on existing users
+    if user.external_ids&.dig("email").blank?
+      user.update!(external_ids: (user.external_ids || {}).merge("email" => sender_email))
+    end
+    if user.email.blank?
+      user.update!(email: sender_email)
+    end
+
+    conversation = Conversation.find_or_start(
+      user: user,
+      agent: agent,
+      channel: adapter.channel,
+      external_thread_key: normalized[:external_thread_key]
+    )
+
+    # Store email subject on the conversation (first email sets it)
+    email_subject = normalized.dig(:metadata, "email_subject")
+    if email_subject.present? && conversation.metadata&.dig("email_subject").blank?
+      conversation.update!(metadata: (conversation.metadata || {}).merge(
+        "email_subject" => email_subject,
+        "email_original_message_id" => normalized.dig(:metadata, "email_original_message_id")
+      ))
+    end
+
+    # Deduplicate by Postmark MessageID
+    postmark_message_id = normalized.dig(:metadata, "email_message_id")
+    if postmark_message_id.present?
+      already_exists = conversation.messages
+                                   .where(role: 'user')
+                                   .where("metadata->>'email_message_id' = ?", postmark_message_id)
+                                   .exists?
+      if already_exists
+        head :ok
+        return
+      end
+    end
+
+    message = conversation.messages.create!(
+      workspace: workspace,
+      user: user,
+      role: 'user',
+      content: normalized[:content],
+      metadata: normalized[:metadata] || {}
+    )
+
+    ProcessMessageJob.perform_later(message.id)
+
+    head :ok
+  end
+
   private
 
   def serialize_attachment(attachment)

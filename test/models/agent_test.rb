@@ -107,6 +107,35 @@ class AgentTest < ActiveSupport::TestCase
     assert_equal({}, env)
   end
 
+  # --- Email handle ---
+
+  test 'email_handle returns value from settings' do
+    assert_equal 'jennifer', agents(:jennifer).email_handle
+  end
+
+  test 'email_handle returns nil when not configured' do
+    assert_nil agents(:steward).email_handle
+  end
+
+  test 'find_by_email_handle finds agent by handle' do
+    agent = Agent.find_by_email_handle('jennifer')
+    assert_equal agents(:jennifer), agent
+  end
+
+  test 'find_by_email_handle is case-insensitive' do
+    agent = Agent.find_by_email_handle('JENNIFER')
+    assert_equal agents(:jennifer), agent
+  end
+
+  test 'find_by_email_handle returns nil for unknown handle' do
+    assert_nil Agent.find_by_email_handle('unknown')
+  end
+
+  test 'find_by_email_handle returns nil for blank handle' do
+    assert_nil Agent.find_by_email_handle('')
+    assert_nil Agent.find_by_email_handle(nil)
+  end
+
   # --- Skill management ---
 
   test 'enable_skill! creates agent tools from skill definitions' do

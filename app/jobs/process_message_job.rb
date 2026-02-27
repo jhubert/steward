@@ -232,6 +232,9 @@ class ProcessMessageJob < ApplicationJob
     case conversation.channel
     when 'telegram'
       Adapters::Telegram.new(bot_token: conversation.agent.telegram_bot_token)
+    when 'email'
+      server_token = Rails.application.credentials.dig(:postmark, :server_token)
+      Adapters::Email.new(server_token: server_token)
     when 'background'
       Adapters::Background.new
     else
@@ -535,14 +538,17 @@ class ProcessMessageJob < ApplicationJob
     user = conversation.user
 
     telegram_conv = user.conversations.find_by(agent: agent, channel: "telegram")
-    unless telegram_conv
-      return virtual_result("send_message", "Error: No Telegram conversation found for this user and agent. The user hasn't talked to this agent on Telegram yet.")
+    email_conv = user.conversations.find_by(agent: agent, channel: "email")
+    delivery_conv = telegram_conv || email_conv
+
+    unless delivery_conv
+      return virtual_result("send_message", "Error: No Telegram or email conversation found for this user and agent. The user hasn't talked to this agent yet.")
     end
 
     msg_metadata = { source: "background", background_conversation_id: conversation.id }
     msg_metadata[:background_context] = context_summary if context_summary
 
-    msg = telegram_conv.messages.create!(
+    msg = delivery_conv.messages.create!(
       workspace: conversation.workspace,
       user: user,
       role: "assistant",
@@ -551,8 +557,9 @@ class ProcessMessageJob < ApplicationJob
     )
 
     begin
-      Adapters::Telegram.new(bot_token: agent.telegram_bot_token).send_reply(telegram_conv, msg)
-      virtual_result("send_message", "Message delivered to user via Telegram.", input: text.truncate(200))
+      adapter = adapter_for(delivery_conv)
+      adapter.send_reply(delivery_conv, msg)
+      virtual_result("send_message", "Message delivered to user via #{delivery_conv.channel}.", input: text.truncate(200))
     rescue Adapters::DeliveryError => e
       virtual_result("send_message", "Message saved but delivery failed: #{e.message}", input: text.truncate(200))
     end

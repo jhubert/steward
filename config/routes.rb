@@ -1,5 +1,6 @@
 Rails.application.routes.draw do
   post 'webhooks/telegram/:agent_id', to: 'webhooks#telegram'
+  post 'webhooks/email', to: 'webhooks#email'
 
   # Google OAuth setup flow (signed token-based auth)
   get  'setup/google/:token', to: 'setup#show', as: :google_setup

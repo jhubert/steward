@@ -27,3 +27,15 @@ bob_jennifer:
   status: active
   tags: []
   metadata: {}
+
+alice_jennifer_email:
+  workspace: default
+  user: alice
+  agent: jennifer
+  channel: email
+  external_thread_key: "alice@example.com"
+  status: active
+  tags: []
+  metadata:
+    email_subject: "Hello Jennifer"
+    email_original_message_id: "<original-123@example.com>"

@@ -8,4 +8,5 @@ jennifer:
   workspace: default
   name: Jennifer
   system_prompt: "You are Jennifer, an executive assistant serving multiple principals."
-  settings: {}
+  settings:
+    email_handle: jennifer

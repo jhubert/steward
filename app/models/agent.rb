@@ -96,6 +96,15 @@ class Agent < ApplicationRecord
     end.map(&:name)
   end
 
+  def email_handle
+    settings&.dig('email_handle')
+  end
+
+  def self.find_by_email_handle(handle)
+    return nil if handle.blank?
+    unscoped.where("settings->>'email_handle' = ?", handle.downcase).first
+  end
+
   def telegram_bot_token
     settings&.dig('telegram_bot_token') || Rails.application.credentials.dig(:telegram, :bot_token) || ENV["TELEGRAM_BOT_TOKEN"]
   end

@@ -848,7 +848,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     assert captured_tool_results
     tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
-    assert_match(/No Telegram conversation/, tool_content[:content])
+    assert_match(/No Telegram or email conversation/, tool_content[:content])
   end
 
   test 'remember virtual tool creates a memory item' do
