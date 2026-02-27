@@ -323,6 +323,8 @@ class ProcessMessageJob < ApplicationJob
       execute_send_message(input, conversation)
     when "create_skill"
       execute_create_skill(input, conversation)
+    when "invite_user"
+      execute_invite_user(input, conversation)
     when "recall"
       execute_recall(input, conversation)
     when "read_transcript"
@@ -647,6 +649,86 @@ class ProcessMessageJob < ApplicationJob
     end
 
     virtual_result("create_skill", "Skill '#{skill_name}' created successfully.\nFiles: #{created_files.join(', ')}#{enable_message}", input: skill_name)
+  end
+
+  def execute_invite_user(input, conversation)
+    email = input["email"].to_s.strip.downcase
+    name = input["name"].to_s.strip.presence
+
+    if email.blank? || !email.match?(/\A[^@\s]+@[^@\s]+\z/)
+      return virtual_result("invite_user", "Error: A valid email address is required.")
+    end
+
+    # Check for existing invite
+    existing = Invite.find_by(email: email)
+    if existing
+      status = existing.status
+      return virtual_result("invite_user", "An invite for #{email} already exists (status: #{status}).", input: email)
+    end
+
+    # Check if user already exists (they're already on the platform)
+    invitee = User.find_by_email_address(email)
+    invitee ||= User.create!(
+      workspace: conversation.workspace,
+      name: name || email.split("@").first,
+      email: email,
+      external_ids: { "emails" => [email] }
+    )
+    invitee.add_email!(email)
+
+    # Create the invite record
+    invite = Invite.create!(
+      workspace: conversation.workspace,
+      invited_by: conversation.user,
+      user: invitee,
+      email: email,
+      name: name,
+      status: "pending"
+    )
+
+    # Find Stuart agent (the platform's front door)
+    stuart_agent = conversation.agent
+
+    # Create an email conversation between the invitee and Stuart
+    email_conv = Conversation.find_or_start(
+      user: invitee,
+      agent: stuart_agent,
+      channel: "email",
+      external_thread_key: email
+    )
+    email_conv.update!(metadata: (email_conv.metadata || {}).merge(
+      "email_subject" => "Welcome to Stuart"
+    ))
+
+    # Build the welcome email body
+    inviter_name = conversation.user.name.presence || "Someone"
+    welcome_body = "Hi#{name ? " #{name}" : ""}!\n\n" \
+      "#{inviter_name} has invited you to Stuart — a platform where AI agents work for you.\n\n" \
+      "Just reply to this email and I'll help you get set up. I can introduce you to the team " \
+      "and help you find the right agent for whatever you need.\n\n" \
+      "Looking forward to meeting you!\n\n" \
+      "— Stuart"
+
+    # Send the welcome email
+    server_token = Rails.application.credentials.dig(:postmark, :server_token)
+    adapter = Adapters::Email.new(server_token: server_token)
+    message_id = adapter.send_welcome_email(
+      from_handle: stuart_agent.email_handle,
+      to_email: email,
+      subject: "Welcome to Stuart",
+      body: welcome_body
+    )
+
+    # Store welcome as an assistant message (gives Stuart context when invitee replies)
+    email_conv.messages.create!(
+      workspace: conversation.workspace,
+      user: invitee,
+      role: "assistant",
+      content: welcome_body,
+      metadata: { "postmark_message_id" => message_id, "source" => "invite_welcome" }
+    )
+
+    virtual_result("invite_user", "Invitation sent to #{email}. A welcome email has been delivered and #{name || 'the invitee'} can reply to start chatting.", input: email)
   end
 
   def execute_recall(input, conversation)

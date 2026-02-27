@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_16_070458) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_27_054942) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -95,6 +95,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_16_070458) do
     t.index ["user_id"], name: "index_conversations_on_user_id"
     t.index ["workspace_id", "user_id", "agent_id", "channel", "external_thread_key"], name: "idx_conversations_lookup", unique: true
     t.index ["workspace_id"], name: "index_conversations_on_workspace_id"
+  end
+
+  create_table "invites", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "email", null: false
+    t.bigint "invited_by_id", null: false
+    t.string "name"
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id"
+    t.bigint "workspace_id", null: false
+    t.index ["invited_by_id"], name: "index_invites_on_invited_by_id"
+    t.index ["user_id"], name: "index_invites_on_user_id"
+    t.index ["workspace_id", "email"], name: "index_invites_on_workspace_id_and_email", unique: true
+    t.index ["workspace_id"], name: "index_invites_on_workspace_id"
   end
 
   create_table "memory_items", force: :cascade do |t|
@@ -327,6 +342,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_16_070458) do
   add_foreign_key "conversations", "agents"
   add_foreign_key "conversations", "users"
   add_foreign_key "conversations", "workspaces"
+  add_foreign_key "invites", "users"
+  add_foreign_key "invites", "users", column: "invited_by_id"
+  add_foreign_key "invites", "workspaces"
   add_foreign_key "memory_items", "conversations"
   add_foreign_key "memory_items", "users"
   add_foreign_key "memory_items", "workspaces"

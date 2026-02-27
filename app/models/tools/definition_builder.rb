@@ -157,6 +157,19 @@ module Tools
       }
     ].freeze
 
+    INVITE_USER_TOOL = {
+      name: "invite_user",
+      description: "Invite a new user to the platform by email. Creates their account and sends a welcome email from you. The user can then reply to start a conversation, and you can help them find and hire agents.",
+      input_schema: {
+        "type" => "object",
+        "properties" => {
+          "email" => { "type" => "string", "description" => "The email address to invite" },
+          "name" => { "type" => "string", "description" => "Optional display name for the invitee" }
+        },
+        "required" => ["email"]
+      }
+    }.freeze
+
     SEND_MESSAGE_TOOL = {
       name: "send_message",
       description: "Send a message to the user via their Telegram chat. Use this in background processing mode to notify the user about important events. Only send messages worth interrupting the user for.",
@@ -179,6 +192,7 @@ module Tools
       tools = @agent.enabled_tools.map(&:to_anthropic_tool)
       tools.concat(BUILTIN_TOOLS)
       tools << SEND_MESSAGE_TOOL if @conversation&.background?
+      tools << INVITE_USER_TOOL if @agent.settings&.dig("can_invite")
       tools.presence
     end
   end

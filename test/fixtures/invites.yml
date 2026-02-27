@@ -1,0 +1,14 @@
+pending_invite:
+  workspace: default
+  invited_by: alice
+  user: bob
+  email: bob@example.com
+  status: pending
+  name: Bob
+
+revoked_invite:
+  workspace: default
+  invited_by: alice
+  email: revoked@example.com
+  status: revoked
+  name: Revoked User

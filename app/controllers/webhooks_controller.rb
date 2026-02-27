@@ -111,14 +111,25 @@ class WebhooksController < ActionController::API
 
     sender_email = normalized[:user_external_value]
 
-    # Find user by any known email, or create a new one
+    # Access gate: only known users or invited emails can interact via email
     user = User.find_by_email_address(sender_email)
+    unless user || Invite.allowed?(sender_email)
+      Rails.logger.info("[Webhook] Email rejected — unknown sender with no invite: #{sender_email}")
+      head :ok
+      return
+    end
+
+    # Find user by any known email, or create a new one
     user ||= User.create!(
       workspace: workspace,
       name: normalized[:user_name],
       email: sender_email,
       external_ids: { "emails" => [sender_email] }
     )
+
+    # Accept pending invite if present
+    invite = Invite.find_by(email: sender_email, status: "pending")
+    invite&.accept!
 
     # Backfill: ensure this email is in their emails array
     user.add_email!(sender_email)

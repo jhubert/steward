@@ -161,6 +161,57 @@ class Adapters::EmailTest < ActiveSupport::TestCase
     @adapter.send_reply(conversation, message)
   end
 
+  test 'send_welcome_email sends without threading headers' do
+    mock_response = stub(status: 200, body: '{"MessageID": "welcome-123"}')
+    HTTPX.expects(:post).with(
+      "https://api.postmarkapp.com/email",
+      has_entries(json: has_entries(
+        "From" => "stuart@withstuart.com",
+        "To" => "newuser@example.com",
+        "Subject" => "Welcome to Stuart",
+        "TextBody" => "Welcome!",
+        "MessageStream" => "outbound"
+      ))
+    ).returns(mock_response)
+
+    result = @adapter.send_welcome_email(
+      from_handle: "stuart",
+      to_email: "newuser@example.com",
+      subject: "Welcome to Stuart",
+      body: "Welcome!"
+    )
+
+    assert_equal "welcome-123", result
+  end
+
+  test 'send_welcome_email does not include Headers key' do
+    mock_response = stub(status: 200, body: '{"MessageID": "welcome-456"}')
+    HTTPX.expects(:post).with do |_url, opts|
+      !opts[:json].key?("Headers")
+    end.returns(mock_response)
+
+    @adapter.send_welcome_email(
+      from_handle: "stuart",
+      to_email: "test@example.com",
+      subject: "Hi",
+      body: "Hello"
+    )
+  end
+
+  test 'send_welcome_email raises DeliveryError on failure' do
+    mock_response = stub(status: 422, body: '{"ErrorCode": 300}')
+    HTTPX.expects(:post).returns(mock_response)
+
+    assert_raises(Adapters::DeliveryError) do
+      @adapter.send_welcome_email(
+        from_handle: "stuart",
+        to_email: "test@example.com",
+        subject: "Hi",
+        body: "Hello"
+      )
+    end
+  end
+
   private
 
   def postmark_payload(overrides = {})

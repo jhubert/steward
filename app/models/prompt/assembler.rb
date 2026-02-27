@@ -81,7 +81,8 @@ module Prompt
       "github" => "Access GitHub via the `gh` CLI. Can list/view/create PRs, issues, releases, search code, and call the GitHub API. Pass the full subcommand without the `gh` prefix (e.g. `pr list --repo owner/repo`).",
       "send_message" => "Send a message to the user via Telegram or email (whichever channel they use). Only available in background processing mode. Use sparingly — only for events important enough to interrupt the user.",
       "recall" => "Search your long-term memory with a targeted query. Use when you need to remember something specific — a past decision, preference, or fact — that isn't in your current context.",
-      "read_transcript" => "Read the original conversation messages that produced a memory. Use after `recall` to get full context around a remembered fact."
+      "read_transcript" => "Read the original conversation messages that produced a memory. Use after `recall` to get full context around a remembered fact.",
+      "invite_user" => "Invite a new user to the platform by email. Use when a principal asks you to invite someone. Creates their account and sends a welcome email."
     }.freeze
 
     def capabilities_context
@@ -103,6 +104,10 @@ module Prompt
 
       if @conversation.background?
         lines << "- **send_message**: #{CAPABILITY_HINTS['send_message']}"
+      end
+
+      if @agent.settings&.dig("can_invite")
+        lines << "- **invite_user**: #{CAPABILITY_HINTS['invite_user']}"
       end
 
       lines.join("\n")

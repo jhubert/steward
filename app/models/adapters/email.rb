@@ -57,6 +57,33 @@ module Adapters
       nil
     end
 
+    def send_welcome_email(from_handle:, to_email:, subject:, body:)
+      payload = {
+        "From" => "#{from_handle}@#{email_domain}",
+        "To" => to_email,
+        "Subject" => subject,
+        "TextBody" => body,
+        "MessageStream" => "outbound"
+      }
+
+      response = HTTPX.post(
+        "#{API_BASE}/email",
+        headers: {
+          "Accept" => "application/json",
+          "Content-Type" => "application/json",
+          "X-Postmark-Server-Token" => @server_token
+        },
+        json: payload
+      )
+
+      unless response.status == 200
+        raise Adapters::DeliveryError, "Postmark send failed (#{response.status}): #{response.body}"
+      end
+
+      parsed = JSON.parse(response.body.to_s) rescue {}
+      parsed["MessageID"]
+    end
+
     def send_reply(conversation, message)
       agent = conversation.agent
       subject = conversation.metadata&.dig("email_subject") || "Message from #{agent.name}"
