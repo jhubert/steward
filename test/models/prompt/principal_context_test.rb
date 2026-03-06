@@ -11,8 +11,7 @@ class Prompt::PrincipalContextTest < ActiveSupport::TestCase
     assert_nil result
   end
 
-  test 'returns nil when user is not a principal' do
-    # Eve is not a principal of Jennifer
+  test 'returns nil when user is not a principal of non-principal-mode agent' do
     conversation = Conversation.create!(
       workspace: workspaces(:default),
       user: users(:bob),
@@ -22,6 +21,27 @@ class Prompt::PrincipalContextTest < ActiveSupport::TestCase
     )
     result = Prompt::PrincipalContext.new(conversation).call
     assert_nil result
+  end
+
+  test 'returns external user context for non-principal of principal-mode agent' do
+    # Create a non-principal user talking to Jennifer (a principal-mode agent)
+    outsider = User.create!(workspace: workspaces(:default), name: "Bryan Alvis", external_ids: { "telegram_chat_id" => "777777" })
+    conversation = Conversation.create!(
+      workspace: workspaces(:default),
+      user: outsider,
+      agent: agents(:jennifer),
+      channel: 'telegram',
+      external_thread_key: '777777'
+    )
+    result = Prompt::PrincipalContext.new(conversation).call
+
+    assert_includes result, "Bryan Alvis"
+    assert_includes result, "NOT one of your principals"
+    assert_includes result, "External User Guidelines"
+    assert_includes result, "Do not share private information"
+    assert_not_includes result, "Your Principals"
+    assert_not_includes result, "Discretion Guidelines"
+    assert_not_includes result, "Cross-Principal Context"
   end
 
   test 'includes current speaker identification' do

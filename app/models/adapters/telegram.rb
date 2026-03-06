@@ -64,8 +64,6 @@ module Adapters
       response
     end
 
-    private
-
     def send_text(chat_id, text)
       # Try Markdown first, fall back to plain text if Telegram can't parse it
       response = HTTPX.post(
@@ -87,6 +85,8 @@ module Adapters
 
       response
     end
+
+    private
 
     def split_message(text)
       return [text] if text.length <= MAX_MESSAGE_LENGTH

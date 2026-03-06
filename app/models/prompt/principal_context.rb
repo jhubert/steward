@@ -18,18 +18,35 @@ module Prompt
 
     def call
       return nil unless @agent.principal_mode?
-      return nil unless @agent.principal?(@user)
 
-      parts = []
-      parts << current_speaker
-      parts << principal_roster
-      parts << DISCRETION_GUIDELINES.strip
-      parts << cross_principal_memories
-
-      parts.compact.join("\n\n")
+      if @agent.principal?(@user)
+        parts = []
+        parts << current_speaker
+        parts << principal_roster
+        parts << DISCRETION_GUIDELINES.strip
+        parts << cross_principal_memories
+        parts.compact.join("\n\n")
+      else
+        non_principal_speaker
+      end
     end
 
     private
+
+    def non_principal_speaker
+      name = @user.name.presence || "Unknown"
+      lines = []
+      lines << "## Current Speaker"
+      lines << "You are speaking with **#{name}**."
+      lines << "This person is NOT one of your principals — they are an external user who was given access via a pairing code."
+      lines << ""
+      lines << "## External User Guidelines"
+      lines << "- Do not share private information about your principals."
+      lines << "- Do not perform sensitive actions (sending emails, accessing calendars, financial tools) on behalf of this person."
+      lines << "- Be helpful and professional, but maintain clear boundaries."
+      lines << "- If they ask for something that should go through a principal, suggest they contact the appropriate person."
+      lines.join("\n")
+    end
 
     def current_speaker
       record = @agent.principal_record(@user)

@@ -29,6 +29,22 @@ class WebhooksController < ActionController::API
       external_ids: { normalized[:user_external_key] => normalized[:user_external_value] }
     )
 
+    # Gate: principal-mode agents require pairing
+    if agent.principal_mode? && !agent.accessible_by?(user)
+      code_text = normalized[:content]&.strip
+      pairing = PairingCode.find_valid(agent: agent, code: code_text)
+      if pairing
+        pairing.redeem!(user)
+        adapter.send_text(normalized[:external_thread_key],
+          "Welcome! You're now connected with #{agent.name}. Go ahead and send me a message.")
+      else
+        adapter.send_text(normalized[:external_thread_key],
+          "Hi! I'm a private assistant. If you've been given a pairing code, please send it to me.")
+      end
+      head :ok
+      return
+    end
+
     # Find or create conversation for this user + agent
     conversation = Conversation.find_or_start(
       user: user,
@@ -94,7 +110,8 @@ class WebhooksController < ActionController::API
     adapter = Adapters::Email.new(server_token: server_token)
     normalized = adapter.normalize(params.to_unsafe_h)
 
-    if normalized.nil? || normalized[:content].blank?
+    has_attachments = normalized&.dig(:raw_attachments).present?
+    if normalized.nil? || (normalized[:content].blank? && !has_attachments)
       head :ok
       return
     end
@@ -111,45 +128,80 @@ class WebhooksController < ActionController::API
 
     sender_email = normalized[:user_external_value]
 
-    # Access gate: only known users or invited emails can interact via email
-    user = User.find_by_email_address(sender_email)
-    unless user || Invite.allowed?(sender_email)
-      Rails.logger.info("[Webhook] Email rejected — unknown sender with no invite: #{sender_email}")
-      head :ok
-      return
+    # Step 1: Try to find an existing email thread by thread key
+    conversation = Conversation.find_by_email_thread(
+      workspace: workspace,
+      agent: agent,
+      thread_key: normalized[:external_thread_key]
+    )
+
+    if conversation
+      # Existing thread — find or create a user for the sender (no access gate)
+      user = User.find_by_email_address(sender_email)
+      user ||= User.create!(
+        workspace: workspace,
+        name: normalized[:user_name],
+        email: sender_email,
+        external_ids: { "emails" => [sender_email] }
+      )
+      user.add_email!(sender_email)
+      user.update!(email: sender_email) if user.email.blank?
+    else
+      # Step 2: New thread — apply access gate
+      user = User.find_by_email_address(sender_email)
+      unless user || Invite.allowed?(sender_email)
+        Rails.logger.info("[Webhook] Email rejected — unknown sender with no invite: #{sender_email}")
+        head :ok
+        return
+      end
+
+      user ||= User.create!(
+        workspace: workspace,
+        name: normalized[:user_name],
+        email: sender_email,
+        external_ids: { "emails" => [sender_email] }
+      )
+
+      # Accept pending invite if present
+      invite = Invite.find_by(email: sender_email, status: "pending")
+      invite&.accept!
+
+      user.add_email!(sender_email)
+      user.update!(email: sender_email) if user.email.blank?
+
+      # Create new conversation owned by the sender
+      conversation = Conversation.create!(
+        workspace: workspace,
+        user: user,
+        agent: agent,
+        channel: "email",
+        external_thread_key: normalized[:external_thread_key]
+      )
     end
 
-    # Find user by any known email, or create a new one
-    user ||= User.create!(
-      workspace: workspace,
-      name: normalized[:user_name],
-      email: sender_email,
-      external_ids: { "emails" => [sender_email] }
-    )
+    # Merge participants into conversation metadata
+    if normalized[:participants].present?
+      conversation.merge_email_participants!(normalized[:participants])
+    end
 
-    # Accept pending invite if present
-    invite = Invite.find_by(email: sender_email, status: "pending")
-    invite&.accept!
-
-    # Backfill: ensure this email is in their emails array
-    user.add_email!(sender_email)
-    user.update!(email: sender_email) if user.email.blank?
-
-    conversation = Conversation.find_or_start(
-      user: user,
-      agent: agent,
-      channel: adapter.channel,
-      external_thread_key: normalized[:external_thread_key]
-    )
-
-    # Store email subject on the conversation (first email sets it)
+    # Track last sender and update threading metadata
+    conv_meta_updates = { "last_sender_email" => sender_email }
     email_subject = normalized.dig(:metadata, "email_subject")
     if email_subject.present? && conversation.metadata&.dig("email_subject").blank?
-      conversation.update!(metadata: (conversation.metadata || {}).merge(
-        "email_subject" => email_subject,
-        "email_original_message_id" => normalized.dig(:metadata, "email_original_message_id")
-      ))
+      conv_meta_updates["email_subject"] = email_subject
     end
+    # Always update the original message ID to the latest inbound for In-Reply-To
+    original_msg_id = normalized.dig(:metadata, "email_original_message_id")
+    if original_msg_id.present?
+      conv_meta_updates["email_original_message_id"] = original_msg_id
+      # Append to references chain
+      refs = conversation.metadata&.dig("email_references_chain") || []
+      unless refs.include?(original_msg_id)
+        refs << original_msg_id
+        conv_meta_updates["email_references_chain"] = refs.last(50)
+      end
+    end
+    conversation.update!(metadata: (conversation.metadata || {}).merge(conv_meta_updates))
 
     # Deduplicate by Postmark MessageID
     postmark_message_id = normalized.dig(:metadata, "email_message_id")
@@ -164,12 +216,33 @@ class WebhooksController < ActionController::API
       end
     end
 
+    # Process email attachments
+    attachments = []
+    if normalized[:raw_attachments].present?
+      attachments = Adapters::Email::AttachmentProcessor.call(
+        normalized[:raw_attachments],
+        user_id: user.id
+      )
+    end
+
+    # Build message content — ensure we always have something
+    content = normalized[:content]
+    if content.blank? && attachments.any?
+      content = attachments.map { |a| "[#{a.type.capitalize}: #{a.filename}]" }.join(" ")
+    end
+
+    # Build metadata with attachment info
+    message_metadata = normalized[:metadata] || {}
+    if attachments.any?
+      message_metadata["attachments"] = attachments.map { |a| serialize_attachment(a) }
+    end
+
     message = conversation.messages.create!(
       workspace: workspace,
       user: user,
       role: 'user',
-      content: normalized[:content],
-      metadata: normalized[:metadata] || {}
+      content: content,
+      metadata: message_metadata
     )
 
     ProcessMessageJob.perform_later(message.id)

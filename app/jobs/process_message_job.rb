@@ -1,7 +1,7 @@
 class ProcessMessageJob < ApplicationJob
   queue_as :default
 
-  MAX_TOOL_ROUNDS = 50
+  MAX_TOOL_ROUNDS = 100
 
   retry_on "Adapters::DeliveryError", wait: 5.seconds, attempts: 3 do |job, error|
     notify_failure(job.arguments.first, error)
@@ -153,6 +153,27 @@ class ProcessMessageJob < ApplicationJob
 
         # Show typing while processing continues
         adapter.send_typing(conversation) rescue nil
+      elsif response.stop_reason.to_s == 'max_tokens'
+        # Response was truncated — append partial text and ask the model to finish
+        partial_text = extract_text(response.content)
+        if partial_text.present?
+          messages << { role: 'assistant', content: serialize_content(response.content) }
+          messages << { role: 'user', content: 'Your response was cut off due to length. Please finish your response concisely from where you left off.' }
+
+          continuation = Rails.configuration.anthropic_client.messages.create(
+            model: agent.model,
+            max_tokens: agent.token_budgets['response'],
+            system: messages.first[:content],
+            messages: messages[1..]
+          )
+          total_input_tokens += continuation.usage.input_tokens
+          total_output_tokens += continuation.usage.output_tokens
+
+          reply_text = partial_text + extract_text(continuation.content)
+        else
+          reply_text = "(Response truncated)"
+        end
+        break
       else
         reply_text = extract_text(response.content)
         break
@@ -321,6 +342,8 @@ class ProcessMessageJob < ApplicationJob
       execute_cancel_scheduled_task(input, conversation)
     when "send_message"
       execute_send_message(input, conversation)
+    when "send_email"
+      execute_send_email(input, conversation)
     when "create_skill"
       execute_create_skill(input, conversation)
     when "invite_user"
@@ -329,6 +352,8 @@ class ProcessMessageJob < ApplicationJob
       execute_recall(input, conversation)
     when "read_transcript"
       execute_read_transcript(input, conversation)
+    when "generate_pairing_code"
+      execute_generate_pairing_code(input, conversation)
     end
   end
 
@@ -564,6 +589,106 @@ class ProcessMessageJob < ApplicationJob
       virtual_result("send_message", "Message delivered to user via #{delivery_conv.channel}.", input: text.truncate(200))
     rescue Adapters::DeliveryError => e
       virtual_result("send_message", "Message saved but delivery failed: #{e.message}", input: text.truncate(200))
+    end
+  end
+
+  def execute_send_email(input, conversation)
+    to = input["to"].to_s.strip
+    cc = input["cc"].to_s.strip.presence
+    subject = input["subject"].to_s.strip
+    body = input["body"].to_s.strip
+    reply_to_conversation_id = input["reply_to_conversation_id"]
+
+    agent = conversation.agent
+
+    unless agent.email_handle.present?
+      return virtual_result("send_email", "Error: This agent does not have an email handle configured.")
+    end
+
+    if to.blank? || subject.blank? || body.blank?
+      return virtual_result("send_email", "Error: 'to', 'subject', and 'body' are all required.")
+    end
+
+    server_token = Rails.application.credentials.dig(:postmark, :server_token)
+    adapter = Adapters::Email.new(server_token: server_token)
+    domain = Rails.application.credentials.dig(:postmark, :email_domain) || "withstuart.com"
+    agent_email = "#{agent.email_handle}@#{domain}"
+
+    begin
+      postmark_message_id = adapter.send_new_email(
+        from_handle: agent.email_handle,
+        to: to,
+        cc: cc,
+        subject: subject,
+        body: body
+      )
+
+      # Create an email conversation for this outbound thread so replies route back
+      outbound_message_id = "<#{postmark_message_id}@mtasv.net>"
+
+      # The principal who requested this email is the conversation owner
+      principal_user = conversation.user
+
+      email_conv = if reply_to_conversation_id
+        # Threading into existing conversation
+        Conversation.find_by(
+          id: reply_to_conversation_id,
+          workspace: conversation.workspace,
+          channel: "email"
+        )
+      end
+
+      if email_conv
+        # Update threading metadata for the existing conversation
+        refs = email_conv.metadata&.dig("email_references_chain") || []
+        refs << outbound_message_id
+        email_conv.update!(metadata: (email_conv.metadata || {}).merge(
+          "last_outbound_message_id" => outbound_message_id,
+          "email_references_chain" => refs.last(50)
+        ))
+      else
+        # Create new email conversation keyed by the outbound Message-ID
+        email_conv = Conversation.create!(
+          workspace: conversation.workspace,
+          user: principal_user,
+          agent: agent,
+          channel: "email",
+          external_thread_key: outbound_message_id
+        )
+
+        # Build participants list
+        all_recipients = to.split(",").map(&:strip)
+        all_recipients += cc.split(",").map(&:strip) if cc
+        participants = all_recipients.reject { |e| e.downcase == agent_email.downcase }.map do |e|
+          { "email" => e.downcase, "name" => e.split("@").first }
+        end
+
+        email_conv.update!(metadata: {
+          "email_subject" => subject,
+          "email_participants" => participants,
+          "last_outbound_message_id" => outbound_message_id,
+          "email_references_chain" => [outbound_message_id]
+        })
+      end
+
+      # Store the outbound email as an assistant message for context
+      email_conv.messages.create!(
+        workspace: conversation.workspace,
+        user: principal_user,
+        role: "assistant",
+        content: body,
+        metadata: {
+          "postmark_message_id" => postmark_message_id,
+          "source" => "send_email_tool",
+          "email_to" => to,
+          "email_cc" => cc,
+          "email_subject" => subject
+        }.compact
+      )
+
+      virtual_result("send_email", "Email sent successfully to #{to}#{cc ? " (cc: #{cc})" : ""}.\nSubject: #{subject}\nConversation ID: #{email_conv.id} (replies will be routed here)", input: "to=#{to}, subject=#{subject}".truncate(200))
+    rescue Adapters::DeliveryError => e
+      virtual_result("send_email", "Failed to send email: #{e.message}", input: "to=#{to}".truncate(200))
     end
   end
 
@@ -863,6 +988,24 @@ class ProcessMessageJob < ApplicationJob
     header += " — #{lines.size} of #{messages.size} messages"
 
     virtual_result("read_transcript", "#{header}:\n#{lines.join("\n")}", input: "conversation=#{target.id}")
+  end
+
+  def execute_generate_pairing_code(input, conversation)
+    agent = conversation.agent
+
+    unless agent.principal?(conversation.user)
+      return virtual_result("generate_pairing_code", "Error: Only principals can generate pairing codes.")
+    end
+
+    label = input["label"].to_s.strip.presence
+    pairing = PairingCode.generate(agent: agent, created_by: conversation.user, label: label)
+
+    virtual_result("generate_pairing_code",
+      "Pairing code generated: #{pairing.code}\n" \
+      "For: #{label || 'unspecified'}\n" \
+      "Expires: #{pairing.expires_at.iso8601}\n\n" \
+      "Share this code with the person. They should send it as a message to your Telegram bot to get access.",
+      input: label.to_s.truncate(200))
   end
 
   def virtual_result(tool_name, content, input: nil)

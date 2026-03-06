@@ -82,7 +82,8 @@ module Prompt
       "send_message" => "Send a message to the user via Telegram or email (whichever channel they use). Only available in background processing mode. Use sparingly — only for events important enough to interrupt the user.",
       "recall" => "Search your long-term memory with a targeted query. Use when you need to remember something specific — a past decision, preference, or fact — that isn't in your current context.",
       "read_transcript" => "Read the original conversation messages that produced a memory. Use after `recall` to get full context around a remembered fact.",
-      "invite_user" => "Invite a new user to the platform by email. Use when a principal asks you to invite someone. Creates their account and sends a welcome email."
+      "invite_user" => "Invite a new user to the platform by email. Use when a principal asks you to invite someone. Creates their account and sends a welcome email.",
+      "send_email" => "Compose and send an email to anyone. Use when a principal asks you to email someone — a client, colleague, or anyone else. You can start new threads or reply to existing ones. Recipients can reply and you'll handle their responses."
     }.freeze
 
     def capabilities_context
@@ -108,6 +109,10 @@ module Prompt
 
       if @agent.settings&.dig("can_invite")
         lines << "- **invite_user**: #{CAPABILITY_HINTS['invite_user']}"
+      end
+
+      if @agent.email_handle.present?
+        lines << "- **send_email**: #{CAPABILITY_HINTS['send_email']}"
       end
 
       lines.join("\n")
@@ -292,9 +297,46 @@ module Prompt
 
       # Anthropic API only accepts user/assistant roles in messages array;
       # filter out system messages (session break notices etc. live in the summary)
+      multi_party_email = email_multi_party?
       recent.filter_map do |msg|
         next if msg.role == 'system'
-        { role: msg.role, content: msg.content_blocks_for_api }
+
+        content = msg.content_blocks_for_api
+
+        # In multi-party email threads, label user messages with sender info
+        if multi_party_email && msg.role == 'user'
+          sender_email = msg.metadata&.dig("sender_email")
+          sender_name = msg.metadata&.dig("sender_name")
+          if sender_email.present?
+            label = sender_name.present? ? "#{sender_name} <#{sender_email}>" : sender_email
+            content = prepend_sender_label(content, label)
+          end
+        end
+
+        { role: msg.role, content: content }
+      end
+    end
+
+    def email_multi_party?
+      @conversation.channel == "email" &&
+        (@conversation.metadata&.dig("email_participants") || []).size > 1
+    end
+
+    def prepend_sender_label(content_blocks, label)
+      prefix = "[From: #{label}]\n"
+      if content_blocks.is_a?(Array)
+        # Find first text block and prepend
+        content_blocks.map.with_index do |block, i|
+          if i == 0 && block.is_a?(Hash) && block[:type] == "text"
+            block.merge(text: prefix + block[:text])
+          elsif i == 0 && block.is_a?(String)
+            prefix + block
+          else
+            block
+          end
+        end
+      else
+        prefix + content_blocks.to_s
       end
     end
 

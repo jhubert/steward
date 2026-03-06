@@ -6,6 +6,7 @@ class Agent < ApplicationRecord
   has_many :principals, through: :agent_principals, source: :user
   has_many :agent_tools, dependent: :destroy
   has_many :scheduled_tasks, dependent: :destroy
+  has_many :pairing_codes, dependent: :destroy
 
   validates :name, presence: true
   validates :system_prompt, presence: true
@@ -49,6 +50,14 @@ class Agent < ApplicationRecord
 
   def fellow_principals(user)
     agent_principals.where.not(user: user).includes(:user)
+  end
+
+  def paired?(user)
+    pairing_codes.where(redeemed_by: user).where.not(redeemed_at: nil).exists?
+  end
+
+  def accessible_by?(user)
+    principal?(user) || paired?(user)
   end
 
   def principal_roster

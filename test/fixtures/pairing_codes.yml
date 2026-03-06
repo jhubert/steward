@@ -1,0 +1,25 @@
+valid_code:
+  workspace: default
+  agent: jennifer
+  created_by: alice
+  code: "ABC123"
+  label: "Test User"
+  expires_at: <%= 24.hours.from_now.iso8601 %>
+
+expired_code:
+  workspace: default
+  agent: jennifer
+  created_by: alice
+  code: "EXP001"
+  label: "Expired User"
+  expires_at: <%= 1.hour.ago.iso8601 %>
+
+redeemed_code:
+  workspace: default
+  agent: jennifer
+  created_by: alice
+  redeemed_by: bob
+  code: "RDM001"
+  label: "Redeemed User"
+  expires_at: <%= 24.hours.from_now.iso8601 %>
+  redeemed_at: <%= 1.hour.ago.iso8601 %>

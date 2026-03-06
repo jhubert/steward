@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_27_054942) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_06_000755) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -93,7 +93,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_27_054942) do
     t.bigint "workspace_id", null: false
     t.index ["agent_id"], name: "index_conversations_on_agent_id"
     t.index ["user_id"], name: "index_conversations_on_user_id"
-    t.index ["workspace_id", "user_id", "agent_id", "channel", "external_thread_key"], name: "idx_conversations_lookup", unique: true
+    t.index ["workspace_id", "agent_id", "channel", "external_thread_key"], name: "idx_conversations_email_thread_lookup", unique: true, where: "((channel)::text = 'email'::text)"
+    t.index ["workspace_id", "user_id", "agent_id", "channel", "external_thread_key"], name: "idx_conversations_non_email_lookup", unique: true, where: "((channel)::text <> 'email'::text)"
     t.index ["workspace_id"], name: "index_conversations_on_workspace_id"
   end
 
@@ -143,6 +144,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_27_054942) do
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
     t.index ["user_id"], name: "index_messages_on_user_id"
     t.index ["workspace_id"], name: "index_messages_on_workspace_id"
+  end
+
+  create_table "pairing_codes", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.string "code", null: false
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id", null: false
+    t.datetime "expires_at", null: false
+    t.string "label"
+    t.datetime "redeemed_at"
+    t.bigint "redeemed_by_id"
+    t.datetime "updated_at", null: false
+    t.bigint "workspace_id", null: false
+    t.index ["agent_id"], name: "index_pairing_codes_on_agent_id"
+    t.index ["created_by_id"], name: "index_pairing_codes_on_created_by_id"
+    t.index ["redeemed_by_id"], name: "index_pairing_codes_on_redeemed_by_id"
+    t.index ["workspace_id", "code"], name: "index_pairing_codes_on_workspace_id_and_code", unique: true
+    t.index ["workspace_id"], name: "index_pairing_codes_on_workspace_id"
   end
 
   create_table "scheduled_tasks", force: :cascade do |t|
@@ -351,6 +370,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_27_054942) do
   add_foreign_key "messages", "conversations"
   add_foreign_key "messages", "users"
   add_foreign_key "messages", "workspaces"
+  add_foreign_key "pairing_codes", "agents"
+  add_foreign_key "pairing_codes", "users", column: "created_by_id"
+  add_foreign_key "pairing_codes", "users", column: "redeemed_by_id"
+  add_foreign_key "pairing_codes", "workspaces"
   add_foreign_key "scheduled_tasks", "agent_tools"
   add_foreign_key "scheduled_tasks", "agents"
   add_foreign_key "scheduled_tasks", "conversations"

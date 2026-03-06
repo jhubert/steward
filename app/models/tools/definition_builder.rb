@@ -170,6 +170,34 @@ module Tools
       }
     }.freeze
 
+    SEND_EMAIL_TOOL = {
+      name: "send_email",
+      description: "Send an email to one or more recipients from your email address. Use this when a principal asks you to email someone. If reply_to_conversation_id is set, the email is threaded as a reply in that existing email conversation; otherwise a new email thread is created and linked back to the requesting principal.",
+      input_schema: {
+        "type" => "object",
+        "properties" => {
+          "to" => { "type" => "string", "description" => "Recipient email address(es), comma-separated" },
+          "cc" => { "type" => "string", "description" => "CC email address(es), comma-separated (optional)" },
+          "subject" => { "type" => "string", "description" => "Email subject line" },
+          "body" => { "type" => "string", "description" => "Plain text email body" },
+          "reply_to_conversation_id" => { "type" => "integer", "description" => "If replying to an existing email thread, the conversation ID to thread under (optional)" }
+        },
+        "required" => ["to", "subject", "body"]
+      }
+    }.freeze
+
+    GENERATE_PAIRING_CODE_TOOL = {
+      name: "generate_pairing_code",
+      description: "Generate a one-time pairing code so a new person can message you on Telegram. Give the code to the person — they send it to your bot to get access.",
+      input_schema: {
+        "type" => "object",
+        "properties" => {
+          "label" => { "type" => "string", "description" => "Name or description of who this code is for" }
+        },
+        "required" => ["label"]
+      }
+    }.freeze
+
     SEND_MESSAGE_TOOL = {
       name: "send_message",
       description: "Send a message to the user via their Telegram chat. Use this in background processing mode to notify the user about important events. Only send messages worth interrupting the user for.",
@@ -193,6 +221,8 @@ module Tools
       tools.concat(BUILTIN_TOOLS)
       tools << SEND_MESSAGE_TOOL if @conversation&.background?
       tools << INVITE_USER_TOOL if @agent.settings&.dig("can_invite")
+      tools << SEND_EMAIL_TOOL if @agent.email_handle.present?
+      tools << GENERATE_PAIRING_CODE_TOOL if @agent.principal_mode? && @conversation && @agent.principal?(@conversation.user)
       tools.presence
     end
   end

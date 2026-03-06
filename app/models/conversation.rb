@@ -72,4 +72,36 @@ class Conversation < ApplicationRecord
       external_thread_key: external_thread_key
     )
   end
+
+  # Find an existing email conversation by thread key, regardless of which user owns it.
+  # Falls back to UUID-based fuzzy matching to handle Message-ID domain mismatches
+  # (e.g., outbound stored as @withstuart.com but replies reference @mtasv.net).
+  def self.find_by_email_thread(workspace:, agent:, thread_key:)
+    scope = where(workspace: workspace, agent: agent, channel: "email")
+
+    # Exact match first
+    exact = scope.where(external_thread_key: thread_key).first
+    return exact if exact
+
+    # Extract UUID from angle-bracket Message-ID (e.g., "<uuid@domain>" → "uuid")
+    uuid = thread_key.to_s.delete("<>").split("@").first
+    return nil if uuid.blank? || uuid.length < 8
+
+    scope.where("external_thread_key LIKE ?", "%#{sanitize_sql_like(uuid)}%").first
+  end
+
+  # Merge new participants into the conversation's participant list.
+  def merge_email_participants!(new_participants)
+    existing = metadata&.dig("email_participants") || []
+    existing_emails = existing.map { |p| p["email"] }
+
+    new_participants.each do |p|
+      unless existing_emails.include?(p["email"])
+        existing << p
+        existing_emails << p["email"]
+      end
+    end
+
+    update!(metadata: (metadata || {}).merge("email_participants" => existing))
+  end
 end
