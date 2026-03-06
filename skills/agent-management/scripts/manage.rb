@@ -26,12 +26,20 @@ case action
 when "list_agents"
   agents = Agent.all.order(:name)
   agents.each do |agent|
-    skills = agent.enabled_skill_names
-    tool_count = agent.agent_tools.count
-    puts "#{agent.name} (id=#{agent.id})"
-    puts "  Skills: #{skills.any? ? skills.join(', ') : 'none'}"
-    puts "  Tools: #{tool_count}"
-    puts "  Principals: #{agent.agent_principals.count}"
+    next if agent.name == "Steward" # Don't list yourself
+
+    email = agent.email_handle ? "#{agent.email_handle}@withstuart.com" : nil
+    principals = agent.agent_principals.includes(:user).map { |ap| ap.display_name || ap.user.name }
+    bio = agent.settings&.dig("bio")
+
+    puts "#{agent.name}"
+    puts "  Email: #{email}" if email
+    puts "  Bio: #{bio}" if bio
+    if principals.any?
+      puts "  Currently works for: #{principals.join(', ')}"
+    else
+      puts "  Currently unassigned — available for new work"
+    end
     puts ""
   end
 
@@ -63,6 +71,28 @@ when "disable_skill"
   agent.disable_skill!(skill_name)
   puts "Disabled skill '#{skill_name}' for #{agent_name}."
 
+when "connect_user"
+  agent_name = params["agent"]
+  email = params["email"]
+  abort "Missing 'agent' and 'email' params" unless agent_name && email
+
+  agent = Agent.find_by!(name: agent_name)
+  user = User.find_by_email_address(email)
+  abort "No user found with email '#{email}'. They need to be invited first." unless user
+
+  existing = agent.agent_principals.find_by(user: user)
+  if existing
+    puts "#{user.name || email} is already connected to #{agent_name}."
+  else
+    agent.agent_principals.create!(
+      workspace: workspace,
+      user: user,
+      display_name: params["display_name"] || user.name,
+      role: params["role"] || "user"
+    )
+    puts "Connected #{user.name || email} as principal of #{agent_name}."
+  end
+
 when "create_agent"
   name = params["name"]
   system_prompt = params["system_prompt"]
@@ -90,5 +120,5 @@ when "create_agent"
   end
 
 else
-  abort "Unknown action: #{action}. Valid actions: list_agents, list_skills, enable_skill, disable_skill, create_agent"
+  abort "Unknown action: #{action}. Valid actions: list_agents, list_skills, enable_skill, disable_skill, create_agent, connect_user"
 end

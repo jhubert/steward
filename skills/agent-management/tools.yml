@@ -1,6 +1,6 @@
 tools:
   - name: manage_agents
-    description: "Manage Steward platform agents and their skills. Actions: list_agents, list_skills, enable_skill, disable_skill, create_agent."
+    description: "Manage Steward platform agents and their skills. Actions: list_agents, list_skills, enable_skill, disable_skill, create_agent, connect_user."
     input_schema:
       type: object
       required:
@@ -8,9 +8,9 @@ tools:
       properties:
         action:
           type: string
-          description: "The action to perform: list_agents, list_skills, enable_skill, disable_skill, create_agent"
+          description: "The action to perform: list_agents, list_skills, enable_skill, disable_skill, create_agent, connect_user"
         params:
           type: string
-          description: 'JSON parameters for the action. For enable_skill/disable_skill: {"agent": "Name", "skill": "skill_name"}. For create_agent: {"name": "Name", "system_prompt": "...", "telegram_bot_token": "optional"}'
+          description: 'JSON parameters for the action. For enable_skill/disable_skill: {"agent": "Name", "skill": "skill_name"}. For create_agent: {"name": "Name", "system_prompt": "...", "telegram_bot_token": "optional"}. For connect_user: {"agent": "Name", "email": "user@example.com", "display_name": "...", "role": "..."}'
     command_template: "bin/rails runner skills/agent-management/scripts/manage.rb {action} {params}"
     timeout_seconds: 30
