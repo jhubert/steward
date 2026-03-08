@@ -31,6 +31,9 @@ gem "anthropic"
 # HTTP client for Telegram API
 gem "httpx"
 
+# Markdown to HTML conversion for email formatting
+gem "kramdown"
+
 # Vector similarity search via pgvector
 gem "neighbor"
 

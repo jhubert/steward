@@ -232,7 +232,8 @@ class Adapters::EmailTest < ActiveSupport::TestCase
       json["From"] == "jennifer@withstuart.com" &&
         json["To"] == "alice@example.com" &&
         json["Cc"] == "bob@example.com" &&
-        json["Subject"] == "Re: Hello Jennifer"
+        json["Subject"] == "Re: Hello Jennifer" &&
+        json["HtmlBody"].include?("Hello from Jennifer!")
     end.returns(mock_response)
 
     @adapter.send_reply(conversation, message)
@@ -342,16 +343,15 @@ class Adapters::EmailTest < ActiveSupport::TestCase
 
   test 'send_welcome_email sends without threading headers' do
     mock_response = stub(status: 200, body: '{"MessageID": "welcome-123"}')
-    HTTPX.expects(:post).with(
-      "https://api.postmarkapp.com/email",
-      has_entries(json: has_entries(
-        "From" => "stuart@withstuart.com",
-        "To" => "newuser@example.com",
-        "Subject" => "Welcome to Stuart",
-        "TextBody" => "Welcome!",
-        "MessageStream" => "outbound"
-      ))
-    ).returns(mock_response)
+    HTTPX.expects(:post).with do |_url, opts|
+      json = opts[:json]
+      json["From"] == "stuart@withstuart.com" &&
+        json["To"] == "newuser@example.com" &&
+        json["Subject"] == "Welcome to Stuart" &&
+        json["TextBody"] == "Welcome!" &&
+        json["HtmlBody"].present? &&
+        json["MessageStream"] == "outbound"
+    end.returns(mock_response)
 
     result = @adapter.send_welcome_email(
       from_handle: "stuart",
@@ -400,7 +400,8 @@ class Adapters::EmailTest < ActiveSupport::TestCase
       json["From"] == "jennifer@withstuart.com" &&
         json["To"] == "client@example.com" &&
         json["Subject"] == "Regarding the contract" &&
-        json["TextBody"] == "Hello, here is the contract."
+        json["TextBody"] == "Hello, here is the contract." &&
+        json["HtmlBody"].include?("Hello, here is the contract.")
     end.returns(mock_response)
 
     result = @adapter.send_new_email(

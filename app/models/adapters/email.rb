@@ -80,6 +80,7 @@ module Adapters
         "To" => to_email,
         "Subject" => subject,
         "TextBody" => body,
+        "HtmlBody" => EmailFormatter.to_html(body),
         "MessageStream" => "outbound"
       }
 
@@ -126,6 +127,7 @@ module Adapters
         "To" => to_email,
         "Subject" => subject,
         "TextBody" => message.content,
+        "HtmlBody" => EmailFormatter.to_html(message.content),
         "MessageStream" => "outbound"
       }
       body["Cc"] = cc_emails.join(", ") if cc_emails.any?
@@ -171,6 +173,7 @@ module Adapters
         "To" => to,
         "Subject" => subject,
         "TextBody" => body,
+        "HtmlBody" => EmailFormatter.to_html(body),
         "MessageStream" => "outbound"
       }
       payload["Cc"] = cc if cc.present?
