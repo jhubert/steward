@@ -61,6 +61,49 @@ class AgentTest < ActiveSupport::TestCase
     assert_equal users(:bob), fellows.first.user
   end
 
+  # --- Fellow agents ---
+
+  test 'fellow_agents returns other agents sharing the same principal' do
+    # Alice is principal of both jennifer and markus
+    fellows = agents(:jennifer).fellow_agents(users(:alice))
+    assert_includes fellows, agents(:markus)
+    assert_not_includes fellows, agents(:jennifer)
+  end
+
+  test 'fellow_agents returns empty for non-principal user' do
+    fellows = agents(:jennifer).fellow_agents(users(:eve))
+    assert_empty fellows
+  end
+
+  test 'fellow_agents excludes self' do
+    fellows = agents(:markus).fellow_agents(users(:alice))
+    assert_includes fellows, agents(:jennifer)
+    assert_not_includes fellows, agents(:markus)
+  end
+
+  test 'fellow_agents returns empty when user has only one agent' do
+    # Bob is only a principal of jennifer
+    fellows = agents(:jennifer).fellow_agents(users(:bob))
+    assert_empty fellows
+  end
+
+  # --- Brief description ---
+
+  test 'brief_description extracts first sentence from system_prompt' do
+    agent = agents(:markus)
+    assert_equal "You are Markus, a financial advisor specializing in corporate finance and tax planning.", agent.brief_description
+  end
+
+  test 'brief_description handles missing system_prompt' do
+    agent = Agent.new(system_prompt: nil)
+    assert_nil agent.brief_description
+  end
+
+  test 'brief_description truncates when no sentence ending' do
+    agent = Agent.new(system_prompt: "A" * 200)
+    assert agent.brief_description.length <= 103 # 100 + "..."
+  end
+
   test 'trigger creates background conversation and message and enqueues job' do
     agent = agents(:jennifer)
     user = users(:alice)

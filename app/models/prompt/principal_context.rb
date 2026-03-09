@@ -23,6 +23,7 @@ module Prompt
         parts = []
         parts << current_speaker
         parts << principal_roster
+        parts << fellow_agents_roster
         parts << DISCRETION_GUIDELINES.strip
         parts << cross_principal_memories
         parts.compact.join("\n\n")
@@ -63,6 +64,17 @@ module Prompt
       end
 
       "## Your Principals\n#{entries.join("\n")}"
+    end
+
+    def fellow_agents_roster
+      agents = @agent.fellow_agents(@user)
+      return nil if agents.empty?
+
+      entries = agents.map do |agent|
+        "- **#{agent.name}**: #{agent.brief_description}"
+      end
+
+      "## Fellow Agents\nThe following agents also serve this principal. You can consult them using the `consult_agent` tool when their expertise would help answer a question.\n#{entries.join("\n")}"
     end
 
     def cross_principal_memories

@@ -99,6 +99,41 @@ class Tools::DefinitionBuilderTest < ActiveSupport::TestCase
     assert_not_includes names, 'generate_pairing_code'
   end
 
+  test 'includes consult_agent for principal with fellow agents' do
+    conversation = conversations(:alice_jennifer)
+    builder = Tools::DefinitionBuilder.new(agent: agents(:jennifer), conversation: conversation)
+    definitions = builder.call
+
+    names = definitions.map { |d| d[:name] }
+    assert_includes names, 'consult_agent'
+  end
+
+  test 'does not include consult_agent for principal without fellow agents' do
+    conversation = conversations(:bob_jennifer)
+    builder = Tools::DefinitionBuilder.new(agent: agents(:jennifer), conversation: conversation)
+    definitions = builder.call
+
+    names = definitions.map { |d| d[:name] }
+    assert_not_includes names, 'consult_agent'
+  end
+
+  test 'does not include consult_agent for non-principal-mode agent' do
+    conversation = conversations(:alice_telegram)
+    builder = Tools::DefinitionBuilder.new(agent: agents(:steward), conversation: conversation)
+    definitions = builder.call
+
+    names = definitions.map { |d| d[:name] }
+    assert_not_includes names, 'consult_agent'
+  end
+
+  test 'does not include consult_agent when no conversation given' do
+    builder = Tools::DefinitionBuilder.new(agent: agents(:jennifer))
+    definitions = builder.call
+
+    names = definitions.map { |d| d[:name] }
+    assert_not_includes names, 'consult_agent'
+  end
+
   test 'each definition has required Anthropic fields' do
     builder = Tools::DefinitionBuilder.new(agent: agents(:jennifer))
     definitions = builder.call

@@ -455,6 +455,42 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_match(/Task scheduled/, tool_content[:content])
   end
 
+  test 'schedule_task rejects Steward agent self-scheduling' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'schedule_task',
+      tool_id: 'toolu_sched_steward',
+      input: {
+        'description' => 'Daily check-in',
+        'run_at' => 1.hour.from_now.iso8601,
+        'interval' => 'daily'
+      }
+    )
+    text_response = build_text_response('Cannot schedule.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    # Use the Steward agent conversation (alice_telegram)
+    steward_message = messages(:alice_hello)
+
+    assert_no_difference 'ScheduledTask.count' do
+      ProcessMessageJob.perform_now(steward_message.id)
+    end
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/platform coordinator/, tool_content[:content])
+    assert_match(/cannot create scheduled tasks/, tool_content[:content])
+  end
+
   test 'list_scheduled_tasks virtual tool returns task list' do
     tool_use_response = build_tool_use_response(
       tool_name: 'list_scheduled_tasks',
@@ -1450,6 +1486,93 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     reply = Message.last
     assert_equal 'Hi there!', reply.content
     assert_nil reply.metadata['tool_calls']
+  end
+
+  # --- consult_agent virtual tool tests ---
+
+  test 'consult_agent returns response from target agent' do
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    # First API call: agent uses consult_agent tool
+    tool_use_response = build_tool_use_response(
+      tool_name: 'consult_agent',
+      tool_id: 'toolu_consult_01',
+      input: { 'agent_name' => 'Markus', 'question' => 'What are the tax implications of this deal?' }
+    )
+    # Second API call: the consultation to Markus
+    consultation_response = build_text_response('Based on current tax law, the deal would trigger capital gains of approximately 15%.')
+    # Third API call: Jennifer's final reply incorporating the consultation
+    final_response = build_text_response('I checked with Markus — the deal would trigger about 15% capital gains tax.')
+
+    messages_api = stub
+    messages_api.stubs(:create)
+      .returns(tool_use_response)
+      .then.returns(consultation_response)
+      .then.returns(final_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    reply = Message.last
+    assert_equal 'I checked with Markus — the deal would trigger about 15% capital gains tax.', reply.content
+    assert reply.metadata['tool_calls'].present?
+    assert_equal 'consult_agent', reply.metadata['tool_calls'].first['name']
+  end
+
+  test 'consult_agent with unknown agent name shows available agents' do
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'consult_agent',
+      tool_id: 'toolu_consult_02',
+      input: { 'agent_name' => 'NonexistentAgent', 'question' => 'Hello?' }
+    )
+    text_response = build_text_response("I couldn't find that agent.")
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    # The tool result should have mentioned available agents — check the reply exists
+    reply = Message.last
+    assert_equal "I couldn't find that agent.", reply.content
+  end
+
+  test 'consult_agent fails for non-principal user' do
+    # Create a user in the default workspace who is NOT a principal of jennifer
+    outsider = User.create!(workspace: workspaces(:default), name: "Outsider", external_ids: { "telegram_chat_id" => "888888" })
+    outsider_conv = Conversation.create!(
+      workspace: workspaces(:default),
+      user: outsider,
+      agent: agents(:jennifer),
+      channel: 'telegram',
+      external_thread_key: '888888'
+    )
+    outsider_msg = outsider_conv.messages.create!(
+      workspace: workspaces(:default),
+      user: outsider,
+      role: 'user',
+      content: 'Consult Markus for me',
+      metadata: {}
+    )
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'consult_agent',
+      tool_id: 'toolu_consult_03',
+      input: { 'agent_name' => 'Markus', 'question' => 'What about taxes?' }
+    )
+    text_response = build_text_response('Sorry, I cannot do that.')
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(outsider_msg.id)
+
+    reply = Message.last
+    assert_equal 'Sorry, I cannot do that.', reply.content
   end
 
   private

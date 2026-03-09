@@ -28,6 +28,16 @@ bob_jennifer:
   tags: []
   metadata: {}
 
+alice_markus:
+  workspace: default
+  user: alice
+  agent: markus
+  channel: telegram
+  external_thread_key: "666666"
+  status: active
+  tags: []
+  metadata: {}
+
 alice_jennifer_email:
   workspace: default
   user: alice

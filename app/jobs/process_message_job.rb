@@ -354,6 +354,8 @@ class ProcessMessageJob < ApplicationJob
       execute_read_transcript(input, conversation)
     when "generate_pairing_code"
       execute_generate_pairing_code(input, conversation)
+    when "consult_agent"
+      execute_consult_agent(input, conversation)
     end
   end
 
@@ -435,6 +437,12 @@ class ProcessMessageJob < ApplicationJob
   end
 
   def execute_schedule_task(input, conversation)
+    if conversation.agent.name == "Steward"
+      return virtual_result("schedule_task",
+        "Error: As the platform coordinator, you cannot create scheduled tasks for yourself. " \
+        "Help the user find or hire a specialized agent for this recurring task.")
+    end
+
     description = input["description"].to_s.strip
     run_at_str = input["run_at"].to_s.strip
     interval = input["interval"].to_s.strip.presence || "once"
@@ -1006,6 +1014,65 @@ class ProcessMessageJob < ApplicationJob
       "Expires: #{pairing.expires_at.iso8601}\n\n" \
       "Share this code with the person. They should send it as a message to your Telegram bot to get access.",
       input: label.to_s.truncate(200))
+  end
+
+  def execute_consult_agent(input, conversation)
+    agent_name = input["agent_name"].to_s.strip
+    question = input["question"].to_s.strip
+    context = input["context"].to_s.strip.presence
+
+    if agent_name.blank? || question.blank?
+      return virtual_result("consult_agent", "Error: 'agent_name' and 'question' are required.")
+    end
+
+    agent = conversation.agent
+    user = conversation.user
+
+    unless agent.principal_mode? && agent.principal?(user)
+      return virtual_result("consult_agent", "Error: Agent consultation is only available for principals.")
+    end
+
+    target = agent.fellow_agents(user).find_by(name: agent_name)
+
+    unless target
+      available = agent.fellow_agents(user).pluck(:name)
+      return virtual_result("consult_agent", "Error: Agent '#{agent_name}' not found. Available agents: #{available.join(', ')}", input: agent_name)
+    end
+
+    full_question = question_with_context(question, context)
+
+    consultation_messages = [
+      {
+        role: "user",
+        content: full_question
+      }
+    ]
+
+    consultation_system = "#{target.system_prompt}\n\n---\n\nYou are being consulted by #{agent.name}, another agent on the same platform. " \
+      "A shared principal has asked #{agent.name} a question, and #{agent.name} is seeking your expert input. " \
+      "Answer concisely and directly — your response will be relayed back."
+
+    begin
+      response = Rails.configuration.anthropic_client.messages.create(
+        model: target.model,
+        max_tokens: 1000,
+        system: consultation_system,
+        messages: consultation_messages
+      )
+
+      reply_text = response.content.filter_map { |b| b.text if b.respond_to?(:text) }.join("\n")
+      virtual_result("consult_agent", "Response from #{target.name}:\n\n#{reply_text}", input: "#{agent_name}: #{question}".truncate(200))
+    rescue => e
+      virtual_result("consult_agent", "Error consulting #{agent_name}: #{e.message}", input: agent_name)
+    end
+  end
+
+  def question_with_context(question, context)
+    if context.present?
+      "Context: #{context}\n\nQuestion: #{question}"
+    else
+      question
+    end
   end
 
   def virtual_result(tool_name, content, input: nil)

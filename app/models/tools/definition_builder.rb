@@ -198,6 +198,20 @@ module Tools
       }
     }.freeze
 
+    CONSULT_AGENT_TOOL = {
+      name: "consult_agent",
+      description: "Consult a fellow agent for their expert opinion. Use this when another agent's expertise would help answer the current question — e.g., asking a financial advisor about tax implications, or a scheduling agent about availability. The consulted agent receives your question and responds with their perspective.",
+      input_schema: {
+        "type" => "object",
+        "properties" => {
+          "agent_name" => { "type" => "string", "description" => "The name of the agent to consult (must be a fellow agent serving the same principal)" },
+          "question" => { "type" => "string", "description" => "The question to ask the other agent" },
+          "context" => { "type" => "string", "description" => "Optional background context to help the consulted agent understand the situation" }
+        },
+        "required" => ["agent_name", "question"]
+      }
+    }.freeze
+
     SEND_MESSAGE_TOOL = {
       name: "send_message",
       description: "Send a message to the user via their Telegram chat. Use this in background processing mode to notify the user about important events. Only send messages worth interrupting the user for.",
@@ -223,6 +237,7 @@ module Tools
       tools << INVITE_USER_TOOL if @agent.settings&.dig("can_invite")
       tools << SEND_EMAIL_TOOL if @agent.email_handle.present?
       tools << GENERATE_PAIRING_CODE_TOOL if @agent.principal_mode? && @conversation && @agent.principal?(@conversation.user)
+      tools << CONSULT_AGENT_TOOL if @agent.principal_mode? && @conversation && @agent.principal?(@conversation.user) && @agent.fellow_agents(@conversation.user).any?
       tools.presence
     end
   end

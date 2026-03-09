@@ -52,6 +52,18 @@ class Agent < ApplicationRecord
     agent_principals.where.not(user: user).includes(:user)
   end
 
+  def fellow_agents(user)
+    agent_ids = AgentPrincipal.where(user: user)
+                              .where.not(agent_id: id)
+                              .select(:agent_id)
+    Agent.where(id: agent_ids)
+  end
+
+  def brief_description
+    return nil if system_prompt.blank?
+    system_prompt[/[^.!?]*[.!?]/] || system_prompt.truncate(100)
+  end
+
   def paired?(user)
     pairing_codes.where(redeemed_by: user).where.not(redeemed_at: nil).exists?
   end

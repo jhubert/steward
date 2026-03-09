@@ -15,3 +15,12 @@ jennifer_bob:
   display_name: "Bob"
   permissions: {}
   metadata: { "contact": { "email": "bob@example.com" } }
+
+markus_alice:
+  workspace: default
+  agent: markus
+  user: alice
+  role: "CEO"
+  display_name: "Alice"
+  permissions: {}
+  metadata: {}

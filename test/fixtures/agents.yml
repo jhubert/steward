@@ -10,3 +10,9 @@ jennifer:
   system_prompt: "You are Jennifer, an executive assistant serving multiple principals."
   settings:
     email_handle: jennifer
+
+markus:
+  workspace: default
+  name: Markus
+  system_prompt: "You are Markus, a financial advisor specializing in corporate finance and tax planning. You help principals with budgeting, forecasting, and financial strategy."
+  settings: {}

@@ -75,6 +75,23 @@ class Prompt::PrincipalContextTest < ActiveSupport::TestCase
     assert_includes result, 'Email: bob@example.com'
   end
 
+  test 'includes fellow agents roster for principal with fellow agents' do
+    conversation = conversations(:alice_jennifer)
+    result = Prompt::PrincipalContext.new(conversation).call
+
+    assert_includes result, 'Fellow Agents'
+    assert_includes result, 'Markus'
+    assert_includes result, 'financial advisor'
+    assert_includes result, 'consult_agent'
+  end
+
+  test 'omits fellow agents roster when no fellow agents exist' do
+    conversation = conversations(:bob_jennifer)
+    result = Prompt::PrincipalContext.new(conversation).call
+
+    assert_not_includes result, 'Fellow Agents'
+  end
+
   test 'includes discretion guidelines' do
     conversation = conversations(:alice_jennifer)
     result = Prompt::PrincipalContext.new(conversation).call

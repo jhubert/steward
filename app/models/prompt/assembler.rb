@@ -83,7 +83,8 @@ module Prompt
       "recall" => "Search your long-term memory with a targeted query. Use when you need to remember something specific — a past decision, preference, or fact — that isn't in your current context.",
       "read_transcript" => "Read the original conversation messages that produced a memory. Use after `recall` to get full context around a remembered fact.",
       "invite_user" => "Invite a new user to the platform by email. Use when a principal asks you to invite someone. Creates their account and sends a welcome email.",
-      "send_email" => "Compose and send an email to anyone. Use when a principal asks you to email someone — a client, colleague, or anyone else. You can start new threads or reply to existing ones. Recipients can reply and you'll handle their responses."
+      "send_email" => "Compose and send an email to anyone. Use when a principal asks you to email someone — a client, colleague, or anyone else. You can start new threads or reply to existing ones. Recipients can reply and you'll handle their responses.",
+      "consult_agent" => "Consult a fellow agent for their expert opinion. Use when another agent's expertise would help — e.g., asking a financial advisor about tax implications or a scheduling agent about availability."
     }.freeze
 
     def capabilities_context
@@ -113,6 +114,10 @@ module Prompt
 
       if @agent.email_handle.present?
         lines << "- **send_email**: #{CAPABILITY_HINTS['send_email']}"
+      end
+
+      if @agent.principal_mode? && @conversation.user && @agent.fellow_agents(@conversation.user).any?
+        lines << "- **consult_agent**: #{CAPABILITY_HINTS['consult_agent']}"
       end
 
       lines.join("\n")

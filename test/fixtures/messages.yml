@@ -30,6 +30,14 @@ jennifer_reply_alice:
   content: "Good morning, Alice! Let me check your schedule."
   metadata: {}
 
+alice_markus_hello:
+  conversation: alice_markus
+  workspace: default
+  user: alice
+  role: user
+  content: "Markus, what's our tax situation?"
+  metadata: {}
+
 bob_jennifer_hello:
   conversation: bob_jennifer
   workspace: default
