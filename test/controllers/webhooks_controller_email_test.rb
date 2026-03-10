@@ -291,6 +291,88 @@ class WebhooksControllerEmailTest < ActionDispatch::IntegrationTest
     assert_nil msg.metadata["attachments"]
   end
 
+  test 'principal-mode agent forwards non-principal email to principal' do
+    # Jennifer is principal-mode (has principals alice and bob)
+    # A stranger (not a principal, not paired) tries to start a new thread
+    payload = email_payload(
+      from: "stranger@example.com",
+      from_name: "Stranger",
+      message_id: "<principal-gate@example.com>",
+      subject: "Hi Jennifer"
+    )
+
+    # Create an invite so the stranger passes the invite gate but hits the principal gate
+    Invite.create!(
+      workspace: @workspace,
+      invited_by: users(:alice),
+      email: "stranger@example.com",
+      status: "pending"
+    )
+
+    assert_no_difference 'Conversation.count' do
+      assert_enqueued_with(job: ForwardEmailJob) do
+        post '/webhooks/email', params: payload, as: :json
+      end
+    end
+
+    assert_response :ok
+  end
+
+  test 'principal-mode agent allows new thread from principal email' do
+    # Alice is a principal of Jennifer
+    payload = email_payload(
+      from: "alice@example.com",
+      from_name: "Alice",
+      message_id: "<principal-allow@example.com>",
+      subject: "Hi Jennifer"
+    )
+
+    assert_difference 'Conversation.count', 1 do
+      post '/webhooks/email', params: payload, as: :json
+    end
+
+    assert_response :ok
+  end
+
+  test 'non-principal-mode agent allows any invited sender' do
+    # Steward has no principals, so there's no principal gate
+    steward = agents(:steward)
+    steward.update!(settings: { "email_handle" => "steward" })
+
+    Invite.create!(
+      workspace: @workspace,
+      invited_by: users(:alice),
+      email: "newperson@example.com",
+      status: "pending"
+    )
+
+    payload = email_payload(
+      from: "newperson@example.com",
+      from_name: "New Person",
+      message_id: "<no-principal-gate@example.com>",
+      subject: "Hello Steward",
+      to: [{ "Email" => "steward@withstuart.com", "Name" => "Steward" }]
+    )
+
+    # Steward agent needs to handle this email
+    Adapters::Email.any_instance.stubs(:normalize).returns({
+      agent_handle: "steward",
+      content: "Hello Steward",
+      user_external_key: "emails",
+      user_external_value: "newperson@example.com",
+      user_name: "New Person",
+      external_thread_key: "<no-principal-gate@example.com>",
+      participants: [{ "email" => "newperson@example.com", "name" => "New Person" }],
+      metadata: { "email_message_id" => SecureRandom.uuid, "email_subject" => "Hello Steward", "email_original_message_id" => "<no-principal-gate@example.com>", "sender_email" => "newperson@example.com" }
+    })
+
+    assert_difference 'Conversation.count', 1 do
+      post '/webhooks/email', params: payload, as: :json
+    end
+
+    assert_response :ok
+  end
+
   private
 
   def email_payload(from:, from_name: nil, to: nil, cc: nil, message_id:, postmark_id: nil, subject: "Test", body: "Hello", references: nil, in_reply_to: nil, attachments: nil)

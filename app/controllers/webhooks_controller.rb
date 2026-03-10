@@ -169,6 +169,24 @@ class WebhooksController < ActionController::API
       user.add_email!(sender_email)
       user.update!(email: sender_email) if user.email.blank?
 
+      # Gate: principal-mode agents require the sender to be a principal or paired user
+      if agent.principal_mode? && !agent.accessible_by?(user)
+        if agent.email_handle.present?
+          ForwardEmailJob.perform_later(
+            agent.id,
+            sender_name: normalized[:user_name],
+            sender_email: sender_email,
+            subject: normalized.dig(:metadata, "email_subject") || "",
+            body: normalized[:content] || ""
+          )
+          Rails.logger.info("[Webhook] Email from #{sender_email} queued for forwarding to principal of #{agent.name}")
+        else
+          Rails.logger.info("[Webhook] Email rejected — #{sender_email} not authorized for principal-mode agent #{agent.name}")
+        end
+        head :ok
+        return
+      end
+
       # Create new conversation owned by the sender
       conversation = Conversation.create!(
         workspace: workspace,
