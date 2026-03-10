@@ -169,8 +169,8 @@ class WebhooksController < ActionController::API
       user.add_email!(sender_email)
       user.update!(email: sender_email) if user.email.blank?
 
-      # Gate: principal-mode agents require the sender to be a principal or paired user
-      if agent.principal_mode? && !agent.accessible_by?(user)
+      # Gate: principal-mode agents require the sender to be a principal, paired, or invited user
+      if agent.principal_mode? && !agent.accessible_by?(user) && !Invite.allowed?(sender_email)
         if agent.email_handle.present?
           ForwardEmailJob.perform_later(
             agent.id,

@@ -852,6 +852,10 @@ class ProcessMessageJob < ApplicationJob
       body: welcome_body
     )
 
+    # Update thread key to Postmark Message-ID so replies thread correctly
+    outbound_message_id = "<#{message_id}@mtasv.net>"
+    email_conv.update!(external_thread_key: outbound_message_id)
+
     # Store welcome as an assistant message (gives Stuart context when invitee replies)
     email_conv.messages.create!(
       workspace: conversation.workspace,

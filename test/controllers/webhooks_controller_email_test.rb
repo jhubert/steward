@@ -293,7 +293,9 @@ class WebhooksControllerEmailTest < ActionDispatch::IntegrationTest
 
   test 'principal-mode agent forwards non-principal email to principal' do
     # Jennifer is principal-mode (has principals alice and bob)
-    # A stranger (not a principal, not paired) tries to start a new thread
+    # A known user (not a principal, not paired, no invite) tries to start a new thread
+    User.create!(workspace: @workspace, name: "Stranger", email: "stranger@example.com", external_ids: { "emails" => ["stranger@example.com"] })
+
     payload = email_payload(
       from: "stranger@example.com",
       from_name: "Stranger",
@@ -301,18 +303,33 @@ class WebhooksControllerEmailTest < ActionDispatch::IntegrationTest
       subject: "Hi Jennifer"
     )
 
-    # Create an invite so the stranger passes the invite gate but hits the principal gate
-    Invite.create!(
-      workspace: @workspace,
-      invited_by: users(:alice),
-      email: "stranger@example.com",
-      status: "pending"
-    )
-
     assert_no_difference 'Conversation.count' do
       assert_enqueued_with(job: ForwardEmailJob) do
         post '/webhooks/email', params: payload, as: :json
       end
+    end
+
+    assert_response :ok
+  end
+
+  test 'principal-mode agent allows invited user through principal gate' do
+    # An invited user should be able to email a principal-mode agent
+    payload = email_payload(
+      from: "invited@example.com",
+      from_name: "Invited Person",
+      message_id: "<invited-principal-gate@example.com>",
+      subject: "Hi Jennifer"
+    )
+
+    Invite.create!(
+      workspace: @workspace,
+      invited_by: users(:alice),
+      email: "invited@example.com",
+      status: "pending"
+    )
+
+    assert_difference 'Conversation.count', 1 do
+      post '/webhooks/email', params: payload, as: :json
     end
 
     assert_response :ok
