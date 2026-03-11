@@ -59,6 +59,12 @@ class ProcessMessageJob < ApplicationJob
     adapter = adapter_for(conversation)
     adapter.send_reply(conversation, reply)
 
+    # Clean up ephemeral system instructions — they were only needed to
+    # prompt the agent and shouldn't persist in conversation history.
+    if message.metadata&.dig("system_instruction")
+      message.destroy!
+    end
+
     # Post-delivery jobs (best-effort, failures here don't affect the user)
     CompactConversationJob.perform_later(conversation.id) if conversation.needs_compaction?
     ExtractMemoryJob.perform_later(conversation.id) if conversation.needs_extraction?
@@ -833,12 +839,11 @@ class ProcessMessageJob < ApplicationJob
       "email_subject" => "Welcome to Stuart"
     ))
 
-    # Build the welcome email body
-    inviter_name = conversation.user.name.presence || "Someone"
-    welcome_body = "Hi#{name ? " #{name}" : ""}!\n\n" \
-      "#{inviter_name} has invited you to Stuart — a platform where AI agents work for you.\n\n" \
-      "Just reply to this email and I'll help you get set up. I can introduce you to the team " \
-      "and help you find the right agent for whatever you need.\n\n" \
+    # Build the welcome email body (never reveal inviter's identity)
+    welcome_body = "Hi#{name ? " #{name}" : " there"}!\n\n" \
+      "You've been invited to Stuart — a platform where AI agents work for you.\n\n" \
+      "Just reply to this email and I'll help you get set up. I can learn about what you need " \
+      "and get the right agent built for you.\n\n" \
       "Looking forward to meeting you!\n\n" \
       "— Stuart"
 

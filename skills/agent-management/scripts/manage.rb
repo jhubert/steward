@@ -98,7 +98,16 @@ when "create_agent"
   system_prompt = params["system_prompt"]
   abort "Missing 'name' and 'system_prompt' params" unless name && system_prompt
 
-  settings = {}
+  # Auto-generate email handle from name (e.g. "Maya Sutton" -> "maya.sutton")
+  email_handle = name.downcase.gsub(/[^a-z\s]/, "").strip.gsub(/\s+/, ".")
+
+  settings = {
+    "email_handle" => email_handle,
+    "model" => "claude-sonnet-4-6",
+    "token_budgets" => { "response" => 8192 },
+    "extraction_model" => "claude-haiku-4-5-20251001",
+    "summarization_model" => "claude-haiku-4-5-20251001"
+  }
   settings["telegram_bot_token"] = params["telegram_bot_token"] if params["telegram_bot_token"]
 
   agent = Agent.create!(
@@ -109,6 +118,7 @@ when "create_agent"
   )
 
   puts "Created agent '#{agent.name}' (id=#{agent.id})."
+  puts "Email: #{email_handle}@withstuart.com"
 
   if settings["telegram_bot_token"]
     result = agent.register_telegram_webhook!
@@ -119,6 +129,77 @@ when "create_agent"
     end
   end
 
+when "setup_agent"
+  # All-in-one: create agent, connect user as principal, send intro email.
+  # Params: name, system_prompt, email, display_name (optional), role (optional)
+  name = params["name"]
+  system_prompt = params["system_prompt"]
+  email = params["email"]
+  abort "Missing required params: 'name', 'system_prompt', 'email'" unless name && system_prompt && email
+
+  # 1. Create the agent with email handle and default settings
+  email_handle = name.downcase.gsub(/[^a-z\s]/, "").strip.gsub(/\s+/, ".")
+
+  settings = {
+    "email_handle" => email_handle,
+    "model" => "claude-sonnet-4-6",
+    "token_budgets" => { "response" => 8192 },
+    "extraction_model" => "claude-haiku-4-5-20251001",
+    "summarization_model" => "claude-haiku-4-5-20251001"
+  }
+
+  agent = Agent.create!(
+    workspace: workspace,
+    name: name,
+    system_prompt: system_prompt,
+    settings: settings
+  )
+  puts "Created agent '#{agent.name}' (id=#{agent.id})"
+  puts "Email: #{email_handle}@withstuart.com"
+
+  # 2. Find or create the user and connect as principal
+  user = User.find_by_email_address(email)
+  abort "No user found with email '#{email}'. They need to be invited first." unless user
+
+  display_name = params["display_name"] || user.name
+  role = params["role"] || "owner"
+
+  agent.agent_principals.create!(
+    workspace: workspace,
+    user: user,
+    display_name: display_name,
+    role: role
+  )
+  puts "Connected #{display_name} as #{role} of #{agent.name}"
+
+  # 3. Send intro email from the new agent
+  # Uses a system_instruction message that the LLM sees once to generate a
+  # personalized intro, then ProcessMessageJob deletes it after delivery.
+  # The conversation history starts clean with just the assistant's intro.
+  email_conv = Conversation.find_or_start(
+    user: user,
+    agent: agent,
+    channel: "email",
+    external_thread_key: email
+  )
+  email_conv.update!(metadata: (email_conv.metadata || {}).merge(
+    "email_subject" => "Hi from #{agent.name}"
+  ))
+
+  intro_msg = email_conv.messages.create!(
+    workspace: workspace,
+    user: user,
+    role: "user",
+    content: "Introduce yourself to #{display_name}. Tell them who you are, " \
+             "what you can help with, and ask what's most urgent. Keep it concise. " \
+             "Do not use any tools — just write your message directly.",
+    metadata: { "system_instruction" => true }
+  )
+
+  ProcessMessageJob.perform_later(intro_msg.id)
+  puts "Intro email queued — #{agent.name} will email #{email} shortly."
+  puts "Done! Agent is fully set up and reaching out."
+
 else
-  abort "Unknown action: #{action}. Valid actions: list_agents, list_skills, enable_skill, disable_skill, create_agent, connect_user"
+  abort "Unknown action: #{action}. Valid actions: list_agents, list_skills, enable_skill, disable_skill, create_agent, connect_user, setup_agent"
 end
