@@ -2,6 +2,14 @@ module Adapters
   class Email < Base
     API_BASE = "https://api.postmarkapp.com".freeze
 
+    def self.server_token
+      ENV["POSTMARK_SERVER_TOKEN"] || Rails.application.credentials.dig(:postmark, :server_token)
+    end
+
+    def self.email_domain
+      ENV["POSTMARK_EMAIL_DOMAIN"] || Rails.application.credentials.dig(:postmark, :email_domain) || "withstuart.com"
+    end
+
     def initialize(server_token:)
       @server_token = server_token
     end
@@ -276,7 +284,7 @@ module Adapters
     end
 
     def email_domain
-      Rails.application.credentials.dig(:postmark, :email_domain) || "withstuart.com"
+      self.class.email_domain
     end
   end
 end

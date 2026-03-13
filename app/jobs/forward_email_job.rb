@@ -36,8 +36,7 @@ class ForwardEmailJob < ApplicationJob
       #{body}
     BODY
 
-    server_token = Rails.application.credentials.dig(:postmark, :server_token)
-    adapter = Adapters::Email.new(server_token: server_token)
+    adapter = Adapters::Email.new(server_token: Adapters::Email.server_token)
     adapter.send_new_email(
       from_handle: agent.email_handle,
       to: to_email,

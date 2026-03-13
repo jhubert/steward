@@ -168,7 +168,8 @@ class Agent < ApplicationRecord
     token = telegram_bot_token
     return { ok: false, description: "No bot token configured" } unless token.present?
 
-    url = "https://steward.boardwise.co/webhooks/telegram/#{id}"
+    domain = ENV.fetch("STEWARD_DOMAIN", "steward.boardwise.co")
+    url = "https://#{domain}/webhooks/telegram/#{id}"
     response = HTTPX.post("https://api.telegram.org/bot#{token}/setWebhook", json: { url: url })
     body = JSON.parse(response.body.to_s)
     { ok: body["ok"], description: body["description"] }
