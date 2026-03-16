@@ -260,8 +260,7 @@ class ProcessMessageJob < ApplicationJob
     when 'telegram'
       Adapters::Telegram.new(bot_token: conversation.agent.telegram_bot_token)
     when 'email'
-      server_token = Rails.application.credentials.dig(:postmark, :server_token)
-      Adapters::Email.new(server_token: server_token)
+      Adapters::Email.new(server_token: Adapters::Email.server_token)
     when 'background'
       Adapters::Background.new
     else
@@ -435,7 +434,8 @@ class ProcessMessageJob < ApplicationJob
       end
     when "generate_link"
       token = Gog::SetupToken.generate(user: conversation.user, agent: agent, workspace: conversation.workspace)
-      url = "https://steward.boardwise.co/setup/google/#{token}"
+      domain = ENV.fetch("STEWARD_DOMAIN", "steward.boardwise.co")
+      url = "https://#{domain}/setup/google/#{token}"
       virtual_result("google_setup", "Web setup URL (valid for 1 hour):\n#{url}\n\nSend this link to the user. They can complete Google account setup through the web interface.")
     else
       virtual_result("google_setup", "Error: Unknown action '#{action}'. Valid actions: check, start, complete, generate_link.")
@@ -623,10 +623,8 @@ class ProcessMessageJob < ApplicationJob
       return virtual_result("send_email", "Error: 'to', 'subject', and 'body' are all required.")
     end
 
-    server_token = Rails.application.credentials.dig(:postmark, :server_token)
-    adapter = Adapters::Email.new(server_token: server_token)
-    domain = Rails.application.credentials.dig(:postmark, :email_domain) || "withstuart.com"
-    agent_email = "#{agent.email_handle}@#{domain}"
+    adapter = Adapters::Email.new(server_token: Adapters::Email.server_token)
+    agent_email = "#{agent.email_handle}@#{Adapters::Email.email_domain}"
 
     begin
       postmark_message_id = adapter.send_new_email(
@@ -848,8 +846,7 @@ class ProcessMessageJob < ApplicationJob
       "— Stuart"
 
     # Send the welcome email
-    server_token = Rails.application.credentials.dig(:postmark, :server_token)
-    adapter = Adapters::Email.new(server_token: server_token)
+    adapter = Adapters::Email.new(server_token: Adapters::Email.server_token)
     message_id = adapter.send_welcome_email(
       from_handle: stuart_agent.email_handle,
       to_email: email,

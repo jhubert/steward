@@ -1,0 +1,20 @@
+[Unit]
+Description=Steward Browser Server (Chromium)
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/srv/steward/skills/browser
+EnvironmentFile=/srv/steward/.env.production
+Environment=HOME=/home/deploy
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/node scripts/browser-server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/srv/steward/log/browser.log
+StandardError=append:/srv/steward/log/browser.log
+
+[Install]
+WantedBy=multi-user.target

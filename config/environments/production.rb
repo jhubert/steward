@@ -22,10 +22,10 @@ Rails.application.configure do
   # config.asset_host = "http://assets.example.com"
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
-  config.assume_ssl = true
+  config.assume_ssl = ENV.fetch("DISABLE_SSL", "0") == "0"
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  config.force_ssl = true
+  config.force_ssl = ENV.fetch("DISABLE_SSL", "0") == "0"
 
   # Skip http-to-https redirect for the default health check endpoint.
   # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
@@ -60,7 +60,7 @@ Rails.application.configure do
   # Only use :id for inspections in production.
   config.active_record.attributes_for_inspect = [ :id ]
 
-  # Allow Caddy reverse proxy and Telegram webhook traffic.
-  config.hosts << "steward.boardwise.co"
+  # Allow reverse proxy and Telegram webhook traffic.
+  config.hosts << ENV.fetch("STEWARD_DOMAIN", "steward.boardwise.co")
   config.hosts << "withstuart.com"
 end

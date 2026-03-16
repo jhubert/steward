@@ -3,7 +3,8 @@ namespace :telegram do
   task :set_webhook, [:agent_name] => :environment do |_t, args|
     agent = find_agent!(args[:agent_name])
     token = agent.telegram_bot_token
-    url = "https://steward.boardwise.co/webhooks/telegram/#{agent.id}"
+    domain = ENV.fetch("STEWARD_DOMAIN", "steward.boardwise.co")
+    url = "https://#{domain}/webhooks/telegram/#{agent.id}"
 
     response = HTTPX.post(
       "https://api.telegram.org/bot#{token}/setWebhook",
@@ -43,7 +44,8 @@ namespace :telegram do
     Agent.unscoped.find_each do |agent|
       next unless agent.telegram_bot_token.present?
 
-      url = "https://steward.boardwise.co/webhooks/telegram/#{agent.id}"
+      domain = ENV.fetch("STEWARD_DOMAIN", "steward.boardwise.co")
+      url = "https://#{domain}/webhooks/telegram/#{agent.id}"
       token = agent.telegram_bot_token
 
       response = HTTPX.post(

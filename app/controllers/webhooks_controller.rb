@@ -106,8 +106,7 @@ class WebhooksController < ActionController::API
 
   # POST /webhooks/email
   def email
-    server_token = Rails.application.credentials.dig(:postmark, :server_token)
-    adapter = Adapters::Email.new(server_token: server_token)
+    adapter = Adapters::Email.new(server_token: Adapters::Email.server_token)
     normalized = adapter.normalize(params.to_unsafe_h)
 
     has_attachments = normalized&.dig(:raw_attachments).present?
