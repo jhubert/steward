@@ -73,17 +73,32 @@ class Conversation < ApplicationRecord
     )
   end
 
-  # Find an existing email conversation by thread key, regardless of which user owns it.
+  # Find an existing email conversation by thread key and references list.
+  # Searches external_thread_key column and email_references_chain metadata.
   # Falls back to UUID-based fuzzy matching to handle Message-ID domain mismatches
   # (e.g., outbound stored as @withstuart.com but replies reference @mtasv.net).
-  def self.find_by_email_thread(workspace:, agent:, thread_key:)
+  def self.find_by_email_thread(workspace:, agent:, thread_key:, all_references: [])
     scope = where(workspace: workspace, agent: agent, channel: "email")
 
-    # Exact match first
+    # Exact match on thread key first
     exact = scope.where(external_thread_key: thread_key).first
     return exact if exact
 
-    # Extract UUID from angle-bracket Message-ID (e.g., "<uuid@domain>" → "uuid")
+    # Check if any of the incoming references match a stored thread key
+    if all_references.any?
+      by_ref = scope.where(external_thread_key: all_references).first
+      return by_ref if by_ref
+    end
+
+    # Check if any incoming references appear in stored reference chains
+    if all_references.any?
+      all_references.each do |ref|
+        by_chain = scope.where("metadata->'email_references_chain' @> ?", [ref].to_json).first
+        return by_chain if by_chain
+      end
+    end
+
+    # UUID-based fuzzy match on thread key (handles domain mismatches)
     uuid = thread_key.to_s.delete("<>").split("@").first
     return nil if uuid.blank? || uuid.length < 8
 

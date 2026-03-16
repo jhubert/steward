@@ -44,11 +44,16 @@ module Adapters
       agent_email = "#{agent_handle}@#{domain}"
       participants = collect_participants(raw_params, agent_email)
 
+      # Parse all Message-IDs from References for thread lookup
+      all_references = references.present? ? references.strip.split(/\s+/) : []
+      all_references << in_reply_to if in_reply_to.present? && !all_references.include?(in_reply_to)
+
       result = {
         user_external_key: "email",
         user_external_value: from.downcase,
         user_name: from_name,
         external_thread_key: thread_key,
+        all_references: all_references,
         content: content,
         agent_handle: agent_handle,
         participants: participants,
@@ -263,10 +268,16 @@ module Adapters
         headers << { "Name" => "In-Reply-To", "Value" => reply_to }
       end
 
-      # References: build full chain
+      # References: build full chain, always starting with the thread root
+      # (the conversation's external_thread_key). This ensures email clients
+      # propagate the root through all replies, keeping threading stable.
       refs_chain = meta["email_references_chain"] || []
+      thread_root = conversation.external_thread_key
+      if thread_root.present? && !refs_chain.include?(thread_root)
+        refs_chain = [thread_root] + refs_chain
+      end
       if last_inbound && !refs_chain.include?(last_inbound)
-        refs_chain = [last_inbound] + refs_chain
+        refs_chain << last_inbound
       end
       if refs_chain.any?
         headers << { "Name" => "References", "Value" => refs_chain.join(" ") }

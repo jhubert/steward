@@ -128,11 +128,12 @@ class WebhooksController < ActionController::API
 
     sender_email = normalized[:user_external_value]
 
-    # Step 1: Try to find an existing email thread by thread key
+    # Step 1: Try to find an existing email thread by thread key + references
     conversation = Conversation.find_by_email_thread(
       workspace: workspace,
       agent: agent,
-      thread_key: normalized[:external_thread_key]
+      thread_key: normalized[:external_thread_key],
+      all_references: normalized[:all_references] || []
     )
 
     if conversation
