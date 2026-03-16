@@ -1,0 +1,65 @@
+<% content_for(:title) { "Users — Stuart Admin" } %>
+
+<div class="page-header">
+  <h1>Users</h1>
+</div>
+
+<div class="card">
+  <div class="filter-bar">
+    <label>Search:</label>
+    <%= form_with url: admin_users_path, method: :get, local: true, class: "inline-form" do %>
+      <input type="text" name="q" value="<%= params[:q] %>" placeholder="Name or email..." style="width: 260px;" />
+      <button type="submit" class="btn btn-secondary btn-sm">Search</button>
+    <% end %>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Channels</th>
+        <th>Agents</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @users.each do |user| %>
+        <tr>
+          <td><%= user.name || "—" %></td>
+          <td><%= user.email || "—" %></td>
+          <td>
+            <% channels = [] %>
+            <% channels << "telegram" if user.external_ids&.key?("telegram_chat_id") %>
+            <% channels << "email" if user.external_ids&.dig("emails")&.any? %>
+            <% channels.each do |ch| %>
+              <span class="badge badge-blue"><%= ch %></span>
+            <% end %>
+            <% if channels.empty? %>
+              <span class="text-muted">—</span>
+            <% end %>
+          </td>
+          <td><%= user.agent_principals.size %></td>
+          <td><%= user.created_at.strftime("%b %-d, %Y") %></td>
+          <td class="text-right">
+            <%= link_to "View", admin_user_path(user), class: "btn btn-secondary btn-sm" %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+
+  <% if @users.empty? %>
+    <p class="text-muted" style="padding: 16px 0; text-align: center;">No users found.</p>
+  <% end %>
+
+  <div class="pagination">
+    <% if @page > 1 %>
+      <%= link_to "← Previous", admin_users_path(page: @page - 1, q: params[:q]), class: "btn btn-secondary btn-sm" %>
+    <% end %>
+    <% if @has_next %>
+      <%= link_to "Next →", admin_users_path(page: @page + 1, q: params[:q]), class: "btn btn-secondary btn-sm" %>
+    <% end %>
+  </div>
+</div>

@@ -107,6 +107,7 @@
     <div class="nav-links">
       <%= link_to "Agents", admin_agents_path, class: ("active" if controller_path.start_with?("admin/agent")) %>
       <%= link_to "Conversations", admin_conversations_path, class: ("active" if controller_path == "admin/conversations") %>
+      <%= link_to "Users", admin_users_path, class: ("active" if controller_path == "admin/users") %>
     </div>
   </div>
 

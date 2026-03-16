@@ -22,6 +22,7 @@ Rails.application.routes.draw do
       resources :principals, controller: 'agent_principals', only: [:new, :create, :destroy]
     end
     resources :conversations, only: [:index, :show]
+    resources :users, only: [:index, :show]
   end
 
   root 'home#index'

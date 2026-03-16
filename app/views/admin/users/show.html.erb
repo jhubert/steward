@@ -1,0 +1,106 @@
+<% content_for(:title) { "#{@user.name || "User ##{@user.id}"} — Stuart Admin" } %>
+
+<div class="page-header">
+  <h1><%= @user.name || "User ##{@user.id}" %></h1>
+  <%= link_to "← Back to users", admin_users_path, class: "btn btn-secondary btn-sm" %>
+</div>
+
+<div class="card">
+  <h2>Details</h2>
+  <table>
+    <tr><th style="width: 140px;">Email</th><td><%= @user.email || "—" %></td></tr>
+    <tr><th>Name</th><td><%= @user.name || "—" %></td></tr>
+    <tr>
+      <th>Channels</th>
+      <td>
+        <% if @user.external_ids&.key?("telegram_chat_id") %>
+          <span class="badge badge-blue">telegram</span>
+          <span class="text-muted" style="font-size: 12px; margin-left: 4px;">chat_id: <%= @user.external_ids["telegram_chat_id"] %></span>
+        <% end %>
+        <% if @user.external_ids&.dig("emails")&.any? %>
+          <span class="badge badge-blue">email</span>
+          <span class="text-muted" style="font-size: 12px; margin-left: 4px;"><%= @user.external_ids["emails"].join(", ") %></span>
+        <% end %>
+      </td>
+    </tr>
+    <tr><th>Created</th><td><%= @user.created_at.strftime("%b %-d, %Y %H:%M") %></td></tr>
+  </table>
+</div>
+
+<% if @agent_principals.any? %>
+  <div class="card">
+    <h2>Agent Memberships</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Agent</th>
+          <th>Role</th>
+          <th>Display Name</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @agent_principals.each do |ap| %>
+          <tr>
+            <td><%= link_to ap.agent.name, admin_agent_path(ap.agent) %></td>
+            <td><span class="badge badge-green"><%= ap.role %></span></td>
+            <td><%= ap.display_name || "—" %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
+
+<% if @conversations.any? %>
+  <div class="card">
+    <h2>Recent Conversations</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Agent</th>
+          <th>Channel</th>
+          <th>Messages</th>
+          <th>Last updated</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @conversations.each do |conv| %>
+          <tr>
+            <td><%= link_to conv.agent.name, admin_agent_path(conv.agent) %></td>
+            <td><span class="badge badge-blue"><%= conv.channel %></span></td>
+            <td><%= conv.messages.size %></td>
+            <td><%= conv.updated_at.strftime("%b %-d, %Y %H:%M") %></td>
+            <td class="text-right">
+              <%= link_to "View", admin_conversation_path(conv), class: "btn btn-secondary btn-sm" %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
+
+<% if @memory_items.any? %>
+  <div class="card">
+    <h2>Recent Memory Items</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Content</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @memory_items.each do |item| %>
+          <tr>
+            <td><span class="badge badge-gray"><%= item.category %></span></td>
+            <td style="max-width: 500px; white-space: pre-wrap; word-break: break-word;"><%= item.content %></td>
+            <td><%= item.created_at.strftime("%b %-d, %Y") %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
