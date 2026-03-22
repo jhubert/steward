@@ -260,7 +260,8 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     messages = Prompt::Assembler.new(@conversation).call
     system_content = messages.first[:content]
 
-    assert_includes system_content, 'EST'
+    assert system_content.include?('EST') || system_content.include?('EDT'),
+           'Expected system content to include EST or EDT'
   end
 
   test 'includes background activity briefing when background conversation has recent activity' do
