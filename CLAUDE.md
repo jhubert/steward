@@ -99,7 +99,7 @@ Adapter contract:
 | Message | Append-only log (roles: user, assistant, system) |
 | AgentPrincipal | Join model: agent ↔ user with role, display_name, permissions |
 | ConversationState | Layer B: summary, pinned_facts, active_goals, summarized_through pointer |
-| MemoryItem | Layer D: extracted facts/decisions. Categories: decision, preference, fact, commitment |
+| MemoryItem | Layer D: extracted facts/decisions. Scoped by agent — each agent only sees its own memories. Categories: decision, preference, fact, commitment |
 | AgentTool | Per-agent tool definition: name, description, input_schema (JSON Schema), command_template, encrypted credentials, timeout |
 | ToolExecution | Audit trail: records every tool call with input, output, exit_code, timing, timed_out flag |
 
@@ -139,7 +139,7 @@ AgentTool.create!(
 
 - **ProcessMessageJob**: Locks conversation → sends typing → assembles prompt → calls Anthropic with tool definitions → loops on tool_use responses (execute via Tools::Executor, feed results back) → stores final text reply → sends via adapter. Single-writer per conversation. Max 10 tool rounds.
 - **CompactConversationJob**: Rolling summarization when unsummarized messages exceed threshold (20). Runs after response is sent.
-- **ExtractMemoryJob**: Extracts structured facts (decision, preference, fact, commitment) from each user/assistant exchange into `MemoryItem` records. Runs on `:low_priority` queue after every reply. Uses `Memory::Extractor` with the agent's `extraction_model` (default: Haiku).
+- **ExtractMemoryJob**: Extracts structured facts (decision, preference, fact, commitment) from each user/assistant exchange into `MemoryItem` records, scoped to the conversation's agent. Runs on `:low_priority` queue after every reply. Uses `Memory::Extractor` with the agent's `extraction_model` (default: Haiku).
 
 ### Skills
 
@@ -153,10 +153,12 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 
 - **No service objects.** Domain logic on models, POROs in `app/models/<namespace>/` for concepts (Prompt::Assembler, Compaction::Summarizer, Memory::Extractor, Adapters::Telegram, Skills::Registry, Tools::Executor, Tools::DefinitionBuilder).
 - **Date/Time**: Always `Date.current` / `Time.current`.
-- **LLM client**: Use the `ANTHROPIC_CLIENT` constant (initialized in `config/initializers/anthropic.rb`). API: `ANTHROPIC_CLIENT.messages.create(model:, max_tokens:, system:, messages:)`. Response: `response.content.first.text`, `response.usage.output_tokens`.
+- **LLM client**: Use `Rails.configuration.anthropic_client` (initialized in `config/initializers/anthropic.rb`). API: `client.messages.create(model:, max_tokens:, system:, messages:)`. Response: `response.content.first.text`, `response.usage.output_tokens`.
 - **Token budgets**: Defined per agent in `agent.settings["token_budgets"]`. Defaults: agent_core=800, skills=2000, state=1500, history=4000, response=4000, principal_context=1200.
 - **Per-agent bot tokens**: `agent.telegram_bot_token` reads from `settings["telegram_bot_token"]`, falling back to global `credentials.telegram.bot_token`.
 - **Extraction model**: `agent.extraction_model` reads from `settings["extraction_model"]`, defaults to `claude-haiku-4-5-20251001` (cheap, runs on every message).
+- **Agent email via GOG**: When `agent.settings["gog_email"]` is set (e.g., `jennifer@boardwise.co`), the `send_email` virtual tool routes through GOG/Gmail instead of Postmark. The agent's GOG credentials are stored on a principal's `credentials_json` with matching `gog_account`. Agents without `gog_email` fall back to Postmark (`{email_handle}@withstuart.com`).
+- **Memory sharing**: `agent.memory_sharing?` reads from `settings["memory_sharing"]` (default: false). Memories are always scoped by agent — each agent only sees memories it extracted. The `memory_sharing` flag is reserved for future cross-agent sharing.
 
 ## Infrastructure
 
@@ -173,13 +175,13 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 - Minitest with fixtures
 - `as_workspace(:default)` in setup to set Current.workspace
 - Fixtures: workspaces (default, other), users (alice, bob, eve), agents (steward, jennifer), agent_principals (jennifer_alice, jennifer_bob), agent_tools (jennifer_scheduling, jennifer_moxie, jennifer_disabled), conversations (alice_telegram, alice_jennifer, bob_jennifer), messages, memory_items
-- 113 tests covering models, adapters, prompt assembly, skills, principal context, tool use, executor, definition builder
+- 509 tests covering models, adapters, prompt assembly, skills, principal context, tool use, executor, definition builder, memory retrieval, jobs
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `app/models/agent.rb` | Bot persona, model/token config, telegram_bot_token, principal helpers, tool helpers |
+| `app/models/agent.rb` | Bot persona, model/token config, telegram_bot_token, principal helpers, tool helpers, own_gog_env, memory_sharing? |
 | `app/models/agent_tool.rb` | Per-agent tool definition with encrypted credentials, to_anthropic_tool |
 | `app/models/agent_principal.rb` | Agent ↔ User join model with role/display_name |
 | `app/models/tool_execution.rb` | Audit trail for tool calls (input, output, timing) |
@@ -189,6 +191,7 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 | `app/models/prompt/principal_context.rb` | Builds Layer P: cross-principal awareness |
 | `app/models/compaction/summarizer.rb` | Rolling conversation summary via LLM |
 | `app/models/memory/extractor.rb` | Extracts structured facts from exchanges via LLM |
+| `app/models/memory/retriever.rb` | Searches memory items by semantic + keyword, scoped by agent |
 | `app/models/adapters/telegram.rb` | Telegram normalization + typing + reply |
 | `app/models/adapters/base.rb` | Adapter interface |
 | `app/models/skills/registry.rb` | Loads SKILL.md files, singleton |
@@ -198,7 +201,7 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 | `app/jobs/compact_conversation_job.rb` | Triggers rolling summarization |
 | `app/jobs/extract_memory_job.rb` | Extracts memory items after each reply |
 | `app/controllers/webhooks_controller.rb` | Routes webhooks to agents by :agent_id |
-| `config/initializers/anthropic.rb` | ANTHROPIC_CLIENT constant |
+| `config/initializers/anthropic.rb` | Rails.configuration.anthropic_client setup |
 | `lib/tasks/telegram.rake` | Per-agent webhook management |
 | `db/seeds.rb` | Default workspace + Steward agent |
 | `skills/example/SKILL.md` | Example skill template |
