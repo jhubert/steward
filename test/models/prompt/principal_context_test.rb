@@ -134,6 +134,7 @@ class Prompt::PrincipalContextTest < ActiveSupport::TestCase
       MemoryItem.create!(
         workspace: workspaces(:default),
         user: users(:bob),
+        agent: agents(:jennifer),
         conversation: conversations(:bob_jennifer),
         category: 'fact',
         content: "Detailed fact number #{i} about Bob's work responsibilities and commitments that takes up significant space in the prompt"

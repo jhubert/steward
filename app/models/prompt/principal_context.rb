@@ -89,7 +89,7 @@ module Prompt
       chars_used = 0
 
       fellows.each do |ap|
-        items = MemoryItem.where(user: ap.user).order(created_at: :desc).limit(20)
+        items = MemoryItem.where(user: ap.user, agent: @agent).order(created_at: :desc).limit(20)
         next if items.empty?
 
         lines = []

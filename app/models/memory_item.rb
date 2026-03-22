@@ -4,6 +4,7 @@ class MemoryItem < ApplicationRecord
   has_neighbors :embedding
 
   belongs_to :user
+  belongs_to :agent, optional: true
   belongs_to :conversation, optional: true
 
   validates :content, presence: true

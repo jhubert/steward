@@ -3,7 +3,7 @@ require 'test_helper'
 class Memory::RetrieverTest < ActiveSupport::TestCase
   setup do
     as_workspace(:default)
-    @conversation = conversations(:alice_telegram)
+    @conversation = conversations(:alice_jennifer)
   end
 
   test 'returns nil when no memory items exist for user' do
@@ -17,6 +17,7 @@ class Memory::RetrieverTest < ActiveSupport::TestCase
     MemoryItem.create!(
       workspace: workspaces(:default),
       user: users(:alice),
+      agent: agents(:jennifer),
       conversation: @conversation,
       category: 'fact',
       content: 'Alice works at Acme Corp'
@@ -44,6 +45,7 @@ class Memory::RetrieverTest < ActiveSupport::TestCase
       MemoryItem.create!(
         workspace: workspaces(:default),
         user: users(:alice),
+        agent: agents(:jennifer),
         conversation: @conversation,
         category: 'fact',
         content: "Fact number #{i} with some extra padding text to fill budget"
@@ -127,18 +129,26 @@ class Memory::RetrieverTest < ActiveSupport::TestCase
   end
 
   test 'cross-thread retrieval finds items from other conversations' do
-    # Create a memory item from alice's jennifer conversation
+    # Create a memory item from a different alice+jennifer conversation
+    other_jennifer_conv = Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:jennifer),
+      channel: 'telegram',
+      external_thread_key: 'cross_thread_test'
+    )
     MemoryItem.create!(
       workspace: workspaces(:default),
       user: users(:alice),
-      conversation: conversations(:alice_jennifer),
+      agent: agents(:jennifer),
+      conversation: other_jennifer_conv,
       category: 'decision',
       content: 'Alice decided to use React for the frontend'
     )
 
     Rails.configuration.stubs(:openai_client).returns(nil)
 
-    # Searching from alice_telegram should find items from alice_jennifer
+    # Searching from alice_jennifer should find items from the other jennifer conversation
     result = Memory::Retriever.new(@conversation, budget: 800).call(query: "React frontend")
     assert_not_nil result
     assert_includes result, "React for the frontend"

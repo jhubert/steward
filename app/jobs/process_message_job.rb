@@ -380,6 +380,7 @@ class ProcessMessageJob < ApplicationJob
     record = MemoryItem.create!(
       workspace: conversation.workspace,
       user: conversation.user,
+      agent: conversation.agent,
       conversation: conversation,
       category: category,
       content: content,
@@ -623,6 +624,92 @@ class ProcessMessageJob < ApplicationJob
       return virtual_result("send_email", "Error: 'to', 'subject', and 'body' are all required.")
     end
 
+    gog_env = agent.own_gog_env
+    if gog_env
+      send_email_via_gog(gog_env, agent, conversation, to:, cc:, subject:, body:, reply_to_conversation_id:)
+    else
+      send_email_via_postmark(agent, conversation, to:, cc:, subject:, body:, reply_to_conversation_id:)
+    end
+  end
+
+  def send_email_via_gog(gog_env, agent, conversation, to:, cc:, subject:, body:, reply_to_conversation_id:)
+    agent_email = gog_env["GOG_ACCOUNT"]
+
+    argv = ["/usr/local/bin/gog", "gmail", "send",
+            "--to", to,
+            "--subject", subject,
+            "--body-html", plain_text_to_html(body),
+            "--json", "--no-input"]
+    argv += ["--cc", cc] if cc.present?
+
+    # Thread replies using Gmail thread ID if we have one
+    email_conv = find_reply_conversation(reply_to_conversation_id, conversation)
+    gmail_thread_id = email_conv&.metadata&.dig("gmail_thread_id")
+    argv += ["--thread-id", gmail_thread_id] if gmail_thread_id.present?
+
+    begin
+      stdout, stderr, status = Open3.capture3(gog_env, *argv)
+
+      unless status.success?
+        error_msg = stderr.presence || stdout
+        return virtual_result("send_email", "Failed to send email via Gmail: #{error_msg.to_s.truncate(500)}", input: "to=#{to}".truncate(200))
+      end
+
+      response = JSON.parse(stdout) rescue {}
+      gmail_message_id = response["id"]
+      gmail_thread_id = response["threadId"]
+
+      principal_user = conversation.user
+
+      if email_conv
+        email_conv.update!(metadata: (email_conv.metadata || {}).merge(
+          "gmail_thread_id" => gmail_thread_id,
+          "last_gmail_message_id" => gmail_message_id
+        ).compact)
+      else
+        email_conv = Conversation.create!(
+          workspace: conversation.workspace,
+          user: principal_user,
+          agent: agent,
+          channel: "email",
+          external_thread_key: gmail_thread_id.present? ? "gmail:#{gmail_thread_id}" : "gmail:#{gmail_message_id}"
+        )
+
+        all_recipients = to.split(",").map(&:strip)
+        all_recipients += cc.split(",").map(&:strip) if cc
+        participants = all_recipients.reject { |e| e.downcase == agent_email.downcase }.map do |e|
+          { "email" => e.downcase, "name" => e.split("@").first }
+        end
+
+        email_conv.update!(metadata: {
+          "email_subject" => subject,
+          "email_participants" => participants,
+          "gmail_thread_id" => gmail_thread_id,
+          "last_gmail_message_id" => gmail_message_id
+        }.compact)
+      end
+
+      email_conv.messages.create!(
+        workspace: conversation.workspace,
+        user: principal_user,
+        role: "assistant",
+        content: body,
+        metadata: {
+          "gmail_message_id" => gmail_message_id,
+          "source" => "send_email_tool",
+          "email_to" => to,
+          "email_cc" => cc,
+          "email_subject" => subject
+        }.compact
+      )
+
+      virtual_result("send_email", "Email sent successfully from #{agent_email} to #{to}#{cc ? " (cc: #{cc})" : ""}.\nSubject: #{subject}\nConversation ID: #{email_conv.id} (replies will be routed here)", input: "to=#{to}, subject=#{subject}".truncate(200))
+    rescue => e
+      virtual_result("send_email", "Failed to send email: #{e.message}", input: "to=#{to}".truncate(200))
+    end
+  end
+
+  def send_email_via_postmark(agent, conversation, to:, cc:, subject:, body:, reply_to_conversation_id:)
     server_token = Rails.application.credentials.dig(:postmark, :server_token)
     adapter = Adapters::Email.new(server_token: server_token)
     domain = Rails.application.credentials.dig(:postmark, :email_domain) || "withstuart.com"
@@ -637,23 +724,12 @@ class ProcessMessageJob < ApplicationJob
         body: body
       )
 
-      # Create an email conversation for this outbound thread so replies route back
       outbound_message_id = "<#{postmark_message_id}@mtasv.net>"
-
-      # The principal who requested this email is the conversation owner
       principal_user = conversation.user
 
-      email_conv = if reply_to_conversation_id
-        # Threading into existing conversation
-        Conversation.find_by(
-          id: reply_to_conversation_id,
-          workspace: conversation.workspace,
-          channel: "email"
-        )
-      end
+      email_conv = find_reply_conversation(reply_to_conversation_id, conversation)
 
       if email_conv
-        # Update threading metadata for the existing conversation
         refs = email_conv.metadata&.dig("email_references_chain") || []
         refs << outbound_message_id
         email_conv.update!(metadata: (email_conv.metadata || {}).merge(
@@ -661,7 +737,6 @@ class ProcessMessageJob < ApplicationJob
           "email_references_chain" => refs.last(50)
         ))
       else
-        # Create new email conversation keyed by the outbound Message-ID
         email_conv = Conversation.create!(
           workspace: conversation.workspace,
           user: principal_user,
@@ -670,7 +745,6 @@ class ProcessMessageJob < ApplicationJob
           external_thread_key: outbound_message_id
         )
 
-        # Build participants list
         all_recipients = to.split(",").map(&:strip)
         all_recipients += cc.split(",").map(&:strip) if cc
         participants = all_recipients.reject { |e| e.downcase == agent_email.downcase }.map do |e|
@@ -685,7 +759,6 @@ class ProcessMessageJob < ApplicationJob
         })
       end
 
-      # Store the outbound email as an assistant message for context
       email_conv.messages.create!(
         workspace: conversation.workspace,
         user: principal_user,
@@ -704,6 +777,21 @@ class ProcessMessageJob < ApplicationJob
     rescue Adapters::DeliveryError => e
       virtual_result("send_email", "Failed to send email: #{e.message}", input: "to=#{to}".truncate(200))
     end
+  end
+
+  def find_reply_conversation(reply_to_conversation_id, conversation)
+    return nil unless reply_to_conversation_id
+    Conversation.find_by(
+      id: reply_to_conversation_id,
+      workspace: conversation.workspace,
+      channel: "email"
+    )
+  end
+
+  def plain_text_to_html(text)
+    escaped = ERB::Util.html_escape(text)
+    paragraphs = escaped.split(/\n{2,}/)
+    paragraphs.map { |p| "<p>#{p.gsub("\n", "<br>")}</p>" }.join
   end
 
   def execute_create_skill(input, conversation)

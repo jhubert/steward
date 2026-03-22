@@ -201,14 +201,33 @@ module Prompt
         agent: @conversation.agent
       ).where.not(id: @conversation.id)
        .where.not(channel: "background")
-       .where.not(title: nil)
+       .includes(:state)
        .order(updated_at: :desc)
-       .limit(10)
+       .limit(5)
 
       return nil if other_threads.empty?
 
-      lines = other_threads.map { |c| "- #{c.title}" }
-      "## Other Conversation Threads\n#{lines.join("\n")}"
+      char_budget = (@budgets['cross_channel'] || 1500) * 4
+      chars_used = 0
+      parts = []
+
+      other_threads.each do |conv|
+        label = conv.title || "#{conv.channel} conversation"
+        summary = conv.state&.summary
+        if summary.present?
+          remaining = char_budget - chars_used
+          break if remaining < 200
+          truncated = summary.truncate(remaining)
+          parts << "### #{label} (#{conv.channel}, last active #{conv.updated_at.strftime('%b %-d')})\n#{truncated}"
+          chars_used += truncated.length
+        else
+          parts << "- #{label} (#{conv.channel}, last active #{conv.updated_at.strftime('%b %-d')})"
+        end
+      end
+
+      "## Context From Other Conversations\n" \
+      "You have other conversation threads with this user. Use this context " \
+      "to maintain continuity across channels.\n\n#{parts.join("\n\n")}"
     end
 
     def background_context

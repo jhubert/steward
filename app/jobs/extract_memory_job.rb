@@ -21,6 +21,7 @@ class ExtractMemoryJob < ApplicationJob
       record = MemoryItem.create!(
         workspace: conversation.workspace,
         user: conversation.user,
+        agent: conversation.agent,
         conversation: conversation,
         category: item[:category],
         content: item[:content],

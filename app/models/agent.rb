@@ -117,8 +117,37 @@ class Agent < ApplicationRecord
     end.map(&:name)
   end
 
+  def memory_sharing?
+    settings&.dig('memory_sharing') == true
+  end
+
   def email_handle
     settings&.dig('email_handle')
+  end
+
+  # Returns GOG env vars if the agent has its own authenticated Google account.
+  # Requires agent.settings["gog_email"] to be set (the agent's own Gmail address).
+  # Finds the principal whose gog_account matches and returns their GOG credentials.
+  # Returns nil if the agent should fall back to Postmark.
+  def own_gog_env
+    agent_gog_email = settings&.dig("gog_email").to_s.downcase.presence
+    return nil unless agent_gog_email
+
+    agent_principals.each do |ap|
+      creds = ap.credentials
+      next unless creds["gog_keyring_password"].present?
+      next unless creds["gog_account"].to_s.downcase == agent_gog_email
+
+      user_gog_dir = Rails.root.join("data", "gog", ap.user_id.to_s).to_s
+      return {
+        "XDG_CONFIG_HOME" => user_gog_dir,
+        "GOG_KEYRING_PASSWORD" => creds["gog_keyring_password"],
+        "GOG_KEYRING_BACKEND" => "file",
+        "GOG_ACCOUNT" => agent_gog_email
+      }
+    end
+
+    nil
   end
 
   def self.find_by_email_handle(handle)

@@ -150,6 +150,49 @@ class AgentTest < ActiveSupport::TestCase
     assert_equal({}, env)
   end
 
+  # --- Own GOG env ---
+
+  test 'own_gog_env returns nil when no gog_email setting' do
+    assert_nil agents(:steward).own_gog_env
+  end
+
+  test 'own_gog_env returns nil when no principal has matching gog_account' do
+    agent = agents(:jennifer)
+    agent.update!(settings: agent.settings.merge("gog_email" => "jennifer@boardwise.co"))
+    assert_nil agent.own_gog_env
+  end
+
+  test 'own_gog_env returns env when principal gog_account matches gog_email setting' do
+    agent = agents(:jennifer)
+    agent.update!(settings: agent.settings.merge("gog_email" => "jennifer@boardwise.co"))
+
+    principal = agent_principals(:jennifer_alice)
+    principal.update!(credentials: {
+      "gog_keyring_password" => "test-pass",
+      "gog_account" => "jennifer@boardwise.co"
+    })
+
+    env = agent.own_gog_env
+    assert_not_nil env
+    assert_equal "test-pass", env["GOG_KEYRING_PASSWORD"]
+    assert_equal "jennifer@boardwise.co", env["GOG_ACCOUNT"]
+    assert_equal "file", env["GOG_KEYRING_BACKEND"]
+    assert_match %r{data/gog/#{users(:alice).id}}, env["XDG_CONFIG_HOME"]
+  end
+
+  test 'own_gog_env ignores principal with non-matching gog_account' do
+    agent = agents(:jennifer)
+    agent.update!(settings: agent.settings.merge("gog_email" => "jennifer@boardwise.co"))
+
+    principal = agent_principals(:jennifer_alice)
+    principal.update!(credentials: {
+      "gog_keyring_password" => "test-pass",
+      "gog_account" => "alice@personal.com"
+    })
+
+    assert_nil agent.own_gog_env
+  end
+
   # --- Email handle ---
 
   test 'email_handle returns value from settings' do

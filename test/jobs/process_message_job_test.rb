@@ -916,6 +916,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_equal 'preference', item.category
     assert_equal 'Prefers morning meetings', item.content
     assert_equal users(:alice), item.user
+    assert_equal agents(:jennifer), item.agent
     assert_equal conversations(:alice_jennifer), item.conversation
     assert_equal 'agent_tool', item.metadata['source']
 

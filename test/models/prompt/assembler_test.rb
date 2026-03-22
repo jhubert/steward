@@ -73,6 +73,7 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     MemoryItem.create!(
       workspace: workspaces(:default),
       user: users(:alice),
+      agent: agents(:steward),
       conversation: @conversation,
       category: 'fact',
       content: 'Alice likes pizza'
@@ -91,6 +92,7 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     MemoryItem.create!(
       workspace: workspaces(:default),
       user: users(:alice),
+      agent: agents(:steward),
       conversation: @conversation,
       category: 'fact',
       content: 'Alice likes pizza'
@@ -118,15 +120,15 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     messages = Prompt::Assembler.new(@conversation).call
     system_content = messages.first[:content]
 
-    assert_includes system_content, 'Other Conversation Threads'
+    assert_includes system_content, 'Context From Other Conversations'
     assert_includes system_content, 'Planning the team offsite'
   end
 
-  test 'omits thread catalog when no titled conversations exist' do
+  test 'omits thread catalog when no other conversations exist' do
     messages = Prompt::Assembler.new(@conversation).call
     system_content = messages.first[:content]
 
-    assert_not_includes system_content, 'Other Conversation Threads'
+    assert_not_includes system_content, 'Context From Other Conversations'
   end
 
   test 'includes date context with current date and calendar reference' do

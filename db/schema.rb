@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_06_000755) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_22_084819) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -114,6 +114,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_06_000755) do
   end
 
   create_table "memory_items", force: :cascade do |t|
+    t.bigint "agent_id"
     t.string "category"
     t.text "content", null: false
     t.bigint "conversation_id"
@@ -123,6 +124,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_06_000755) do
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.bigint "workspace_id", null: false
+    t.index ["agent_id"], name: "index_memory_items_on_agent_id"
     t.index ["conversation_id"], name: "index_memory_items_on_conversation_id"
     t.index ["embedding"], name: "index_memory_items_on_embedding", opclass: :vector_cosine_ops, using: :hnsw
     t.index ["user_id"], name: "index_memory_items_on_user_id"
@@ -364,6 +366,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_06_000755) do
   add_foreign_key "invites", "users"
   add_foreign_key "invites", "users", column: "invited_by_id"
   add_foreign_key "invites", "workspaces"
+  add_foreign_key "memory_items", "agents"
   add_foreign_key "memory_items", "conversations"
   add_foreign_key "memory_items", "users"
   add_foreign_key "memory_items", "workspaces"

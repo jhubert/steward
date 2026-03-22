@@ -17,6 +17,7 @@ class ExtractMemoryJobTest < ActiveSupport::TestCase
     assert_equal 'fact', item.category
     assert_equal 'User name is Alice', item.content
     assert_equal users(:alice), item.user
+    assert_equal @conversation.agent, item.agent
     assert_equal @conversation, item.conversation
     assert_kind_of Array, item.metadata['source_message_range']
     assert_equal 2, item.metadata['source_message_range'].size
