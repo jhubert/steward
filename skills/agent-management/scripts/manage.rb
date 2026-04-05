@@ -19,7 +19,8 @@ else
   {}
 end
 
-workspace = Workspace.find_by!(slug: "default")
+workspace_slug = params.delete("workspace") || "jeremy-family"
+workspace = Workspace.find_by!(slug: workspace_slug)
 Current.workspace = workspace
 
 case action

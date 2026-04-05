@@ -12,7 +12,7 @@ sudo systemctl status steward steward-jobs       # Check status of both services
 # Logs: log/puma.log, log/solid_queue.log
 
 bin/rails test                                   # Run tests
-bin/rails db:seed                                # Seed default workspace + Steward agent
+bin/rails db:seed                                # Seed workspaces + Stuart agent
 
 # Telegram webhook management (per-agent)
 bin/rails telegram:set_webhook[AgentName]        # Register webhook for one agent
@@ -51,7 +51,7 @@ The **Steward** agent (@AgentStewardBot) is the platform's front door — for on
 **Adding a new agent:**
 ```ruby
 Agent.create!(
-  workspace: Workspace.find_by(slug: "default"),
+  workspace: Workspace.find_by(slug: "jeremy-family"),
   name: "Lawyer",
   system_prompt: "You are an experienced corporate lawyer...",
   settings: { "telegram_bot_token" => "TOKEN_FROM_BOTFATHER" }
@@ -119,7 +119,7 @@ Agents can execute external scripts via Anthropic's tool use API. Tools are data
 **Adding a tool to an agent:**
 ```ruby
 AgentTool.create!(
-  workspace: Workspace.find_by(slug: "default"),
+  workspace: Workspace.find_by(slug: "jeremy-family"),
   agent: Agent.find_by(name: "Jennifer"),
   name: "find_availability",
   description: "Find available meeting slots for given attendees",
@@ -203,6 +203,6 @@ Skills follow the [Agent Skills spec](https://agentskills.io/specification). The
 | `app/controllers/webhooks_controller.rb` | Routes webhooks to agents by :agent_id |
 | `config/initializers/anthropic.rb` | Rails.configuration.anthropic_client setup |
 | `lib/tasks/telegram.rake` | Per-agent webhook management |
-| `db/seeds.rb` | Default workspace + Steward agent |
+| `db/seeds.rb` | Multi-workspace bootstrap + Stuart agent |
 | `skills/example/SKILL.md` | Example skill template |
 | `docs/plan.md` | Full build plan (Phases 1-4 + future) |

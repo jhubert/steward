@@ -78,8 +78,20 @@ class ProcessMessageJob < ApplicationJob
     assembler = Prompt::Assembler.new(conversation, incoming_message: message.content)
     messages = assembler.call
 
-    # Append the new user message (with media blocks if present)
-    messages << { role: 'user', content: message.content_blocks_for_api }
+    if message.metadata&.dig("system_instruction")
+      # System instructions are platform directives, not user messages.
+      # Inject into the system prompt so the agent treats them as instructions,
+      # then add a minimal user turn (required by the API).
+      messages[0][:content] += "\n\n---\n\n## System Instruction\n" \
+        "The following is a directive from the platform, not from the user. " \
+        "Act on it directly as if it were your own initiative. " \
+        "The user has NOT sent you a message — you are initiating contact.\n\n" \
+        "#{message.content}"
+      messages << { role: 'user', content: '[system instruction — act on directive above]' }
+    else
+      # Append the new user message (with media blocks if present)
+      messages << { role: 'user', content: message.content_blocks_for_api }
+    end
 
     # Get tool definitions (nil if agent has no tools)
     tool_definitions = Tools::DefinitionBuilder.new(agent: agent, conversation: conversation).call

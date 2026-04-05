@@ -1,10 +1,10 @@
-workspace = Workspace.find_or_create_by!(slug: 'default') do |w|
-  w.name = 'Default Workspace'
+workspace = Workspace.find_or_create_by!(slug: 'jeremy-family') do |w|
+  w.name = "Jeremy's Family"
 end
 
-Agent.find_or_create_by!(workspace: workspace, name: 'Steward') do |a|
+Agent.find_or_create_by!(workspace: workspace, name: 'Stuart') do |a|
   a.system_prompt = <<~PROMPT
-    You are Steward, a helpful AI assistant. You are conversational, concise, and friendly.
+    You are Stuart, a helpful AI assistant. You are conversational, concise, and friendly.
 
     Key behaviors:
     - Be direct and helpful
@@ -14,4 +14,17 @@ Agent.find_or_create_by!(workspace: workspace, name: 'Steward') do |a|
   PROMPT
 end
 
-puts "Seeded workspace '#{workspace.slug}' with agent 'Steward'"
+puts "Seeded workspace '#{workspace.slug}' with agent 'Stuart'"
+
+# Create additional workspaces
+%w[boardwise david-wolstenholme jeremy-zipline jeanine-froggart bruce-family].each do |slug|
+  name = {
+    "boardwise" => "BoardWise",
+    "david-wolstenholme" => "David Wolstenholme",
+    "jeremy-zipline" => "Jeremy (Zipline)",
+    "jeanine-froggart" => "Jeanine Froggart",
+    "bruce-family" => "Bruce's Family"
+  }[slug]
+  Workspace.find_or_create_by!(slug: slug) { |w| w.name = name }
+  puts "Ensured workspace '#{slug}'"
+end

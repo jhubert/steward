@@ -103,11 +103,18 @@
 </head>
 <body>
   <div class="nav">
-    <span class="nav-title">Stuart Admin</span>
+    <span class="nav-title">Steward Admin</span>
     <div class="nav-links">
       <%= link_to "Agents", admin_agents_path, class: ("active" if controller_path.start_with?("admin/agent")) %>
       <%= link_to "Conversations", admin_conversations_path, class: ("active" if controller_path == "admin/conversations") %>
       <%= link_to "Users", admin_users_path, class: ("active" if controller_path == "admin/users") %>
+    </div>
+    <div style="margin-left: auto;">
+      <select onchange="window.location.search='?workspace='+this.value" style="width: auto; padding: 4px 8px; font-size: 13px; border-radius: 4px; border: 1px solid #ddd;">
+        <% all_workspaces.each do |ws| %>
+          <option value="<%= ws.slug %>" <%= "selected" if ws.id == current_workspace.id %>><%= ws.name %></option>
+        <% end %>
+      </select>
     </div>
   </div>
 
