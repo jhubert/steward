@@ -18,7 +18,8 @@ echo "=== Daily review started at $(date -u) ==="
 # Ensure we're on a clean main branch
 git fetch origin main
 git checkout main
-git reset --hard origin/main
+git stash --include-untracked -m "daily-review auto-stash $(date +%Y%m%d)"
+git pull --ff-only origin main
 
 cat config/daily-review-prompt.md | claude -p \
   --model sonnet \
