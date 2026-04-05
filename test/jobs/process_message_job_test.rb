@@ -40,8 +40,9 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     jennifer_message = messages(:alice_jennifer_hello)
 
     # Stub the tool execution
-    status = stub(exitstatus: 0)
-    Open3.stubs(:capture3).returns(['Mon 2pm, Tue 3pm', '', status])
+    Tools::Executor.any_instance.stubs(:call).returns(
+      Tools::Executor::Result.new(stdout: 'Mon 2pm, Tue 3pm', stderr: '', exit_code: 0, timed_out: false)
+    )
 
     assert_difference 'Message.count', 1 do
       assert_difference 'ToolExecution.count', 1 do
@@ -97,8 +98,9 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     jennifer_message = messages(:alice_jennifer_hello)
 
-    status = stub(exitstatus: 1)
-    Open3.stubs(:capture3).returns(['', 'Connection failed', status])
+    Tools::Executor.any_instance.stubs(:call).returns(
+      Tools::Executor::Result.new(stdout: '', stderr: 'Connection failed', exit_code: 1, timed_out: false)
+    )
 
     ProcessMessageJob.perform_now(jennifer_message.id)
 
@@ -130,8 +132,9 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     jennifer_message = messages(:alice_jennifer_hello)
 
-    status = stub(exitstatus: 0)
-    Open3.stubs(:capture3).returns(['result', '', status])
+    Tools::Executor.any_instance.stubs(:call).returns(
+      Tools::Executor::Result.new(stdout: 'result', stderr: '', exit_code: 0, timed_out: false)
+    )
 
     ProcessMessageJob.perform_now(jennifer_message.id)
 
@@ -158,8 +161,9 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     jennifer_message = messages(:alice_jennifer_hello)
 
-    status = stub(exitstatus: 0)
-    Open3.stubs(:capture3).returns(['ok', '', status])
+    Tools::Executor.any_instance.stubs(:call).returns(
+      Tools::Executor::Result.new(stdout: 'ok', stderr: '', exit_code: 0, timed_out: false)
+    )
 
     ProcessMessageJob.perform_now(jennifer_message.id)
 
@@ -234,15 +238,19 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     user_id = conversations(:alice_jennifer).user.id
     expected_gog_dir = Rails.root.join("data", "gog", user_id.to_s).to_s
 
-    captured_env = nil
-    status = stub(exitstatus: 0)
-    Open3.stubs(:capture3).with { |*args| captured_env = args.first; true }.returns(['ok', '', status])
+    captured_extra_env = nil
+    executor_spy = Object.new
+    executor_spy.define_singleton_method(:call) do |input, extra_env: {}|
+      captured_extra_env = extra_env
+      Tools::Executor::Result.new(stdout: 'ok', stderr: '', exit_code: 0, timed_out: false)
+    end
+    Tools::Executor.stubs(:new).returns(executor_spy)
 
     ProcessMessageJob.perform_now(jennifer_message.id)
 
-    assert_equal expected_gog_dir, captured_env['XDG_CONFIG_HOME']
-    assert_equal 'secret_pw', captured_env['GOG_KEYRING_PASSWORD']
-    assert_equal 'file', captured_env['GOG_KEYRING_BACKEND']
+    assert_equal expected_gog_dir, captured_extra_env['XDG_CONFIG_HOME']
+    assert_equal 'secret_pw', captured_extra_env['GOG_KEYRING_PASSWORD']
+    assert_equal 'file', captured_extra_env['GOG_KEYRING_BACKEND']
   end
 
   test 'tool execution does not inject gog env when principal has no credentials' do
@@ -259,14 +267,18 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
 
     jennifer_message = messages(:alice_jennifer_hello)
 
-    captured_env = nil
-    status = stub(exitstatus: 0)
-    Open3.stubs(:capture3).with { |*args| captured_env = args.first; true }.returns(['ok', '', status])
+    captured_extra_env = nil
+    executor_spy = Object.new
+    executor_spy.define_singleton_method(:call) do |input, extra_env: {}|
+      captured_extra_env = extra_env
+      Tools::Executor::Result.new(stdout: 'ok', stderr: '', exit_code: 0, timed_out: false)
+    end
+    Tools::Executor.stubs(:new).returns(executor_spy)
 
     ProcessMessageJob.perform_now(jennifer_message.id)
 
-    assert_not_includes captured_env.keys, 'GOG_KEYRING_PASSWORD'
-    assert_not_includes captured_env.keys, 'XDG_CONFIG_HOME'
+    assert_not_includes captured_extra_env.keys, 'GOG_KEYRING_PASSWORD'
+    assert_not_includes captured_extra_env.keys, 'XDG_CONFIG_HOME'
   end
 
   test 'google_setup check action reports unconfigured for user without credentials' do

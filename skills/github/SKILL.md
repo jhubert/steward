@@ -27,3 +27,4 @@ Pass the full subcommand string (without the `gh` prefix) as the `command` param
 - Always use `--repo owner/repo` to specify the repository.
 - The tool authenticates via a pre-configured token — no login is needed.
 - Output may be truncated for very large results. Use `--limit` or `--jq` to filter.
+- When using `--json`, field names are plural where applicable: `assignees` (not `assignee`), `labels`, `reviewers`. If unsure of a field name, run the command without `--json` first, or pass `--help` to list valid fields.

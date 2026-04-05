@@ -66,11 +66,8 @@ class Tools::ExecutorTest < ActiveSupport::TestCase
     @tool.working_directory = nil
     executor = Tools::Executor.new(agent_tool: @tool)
 
-    status = stub(exitstatus: 0)
-    Open3.stubs(:capture3).returns(['hello\n', '', status])
-
     result = executor.call({})
-    assert_equal 'hello\n', result.stdout
+    assert_equal "hello\n", result.stdout
     assert_equal '', result.stderr
     assert_equal 0, result.exit_code
     assert_equal false, result.timed_out
@@ -82,8 +79,6 @@ class Tools::ExecutorTest < ActiveSupport::TestCase
     @tool.working_directory = nil
     executor = Tools::Executor.new(agent_tool: @tool)
 
-    Open3.stubs(:capture3).raises(Timeout::Error)
-
     result = executor.call({})
     assert result.timed_out
     assert_nil result.exit_code
@@ -91,67 +86,53 @@ class Tools::ExecutorTest < ActiveSupport::TestCase
   end
 
   test 'call truncates long output' do
-    @tool.command_template = 'echo big'
+    @tool.command_template = 'python3 -c {script}'
     @tool.working_directory = nil
     executor = Tools::Executor.new(agent_tool: @tool)
 
-    long_output = 'x' * 60_000
-    status = stub(exitstatus: 0)
-    Open3.stubs(:capture3).returns([long_output, '', status])
-
-    result = executor.call({})
+    result = executor.call({ 'script' => "print('x' * 60000)" })
     assert result.stdout.length <= Tools::Executor::MAX_OUTPUT_LENGTH + 20
     assert_includes result.stdout, '... (truncated)'
   end
 
   test 'call passes environment variables to command' do
-    @tool.command_template = 'env'
+    @tool.command_template = 'bash -c {cmd}'
     @tool.credentials = { 'MY_SECRET' => 'val123' }
     @tool.working_directory = nil
     executor = Tools::Executor.new(agent_tool: @tool)
 
-    status = stub(exitstatus: 0)
-    Open3.expects(:capture3).with(
-      { 'MY_SECRET' => 'val123' },
-      'env',
-      chdir: Rails.root.to_s
-    ).returns(['MY_SECRET=val123\n', '', status])
-
-    result = executor.call({})
+    result = executor.call({ 'cmd' => 'echo $MY_SECRET' })
     assert_equal 0, result.exit_code
+    assert_includes result.stdout, 'val123'
   end
 
   test 'call merges extra_env into environment' do
-    @tool.command_template = 'env'
+    @tool.command_template = 'bash -c {cmd}'
     @tool.credentials = { 'TOOL_KEY' => 'from_tool' }
     @tool.working_directory = nil
     executor = Tools::Executor.new(agent_tool: @tool)
 
-    status = stub(exitstatus: 0)
-    Open3.expects(:capture3).with(
-      { 'TOOL_KEY' => 'from_tool', 'XDG_CONFIG_HOME' => '/tmp/gog/1', 'GOG_KEYRING_PASSWORD' => 'pw123' },
-      'env',
-      chdir: Rails.root.to_s
-    ).returns(['output', '', status])
-
-    result = executor.call({}, extra_env: { 'XDG_CONFIG_HOME' => '/tmp/gog/1', 'GOG_KEYRING_PASSWORD' => 'pw123' })
+    result = executor.call(
+      { 'cmd' => 'echo $TOOL_KEY $XDG_CONFIG_HOME' },
+      extra_env: { 'XDG_CONFIG_HOME' => '/tmp/gog/1', 'GOG_KEYRING_PASSWORD' => 'pw123' }
+    )
     assert_equal 0, result.exit_code
+    assert_includes result.stdout, 'from_tool'
+    assert_includes result.stdout, '/tmp/gog/1'
   end
 
   test 'extra_env overrides tool credentials when keys collide' do
-    @tool.command_template = 'env'
+    @tool.command_template = 'bash -c {cmd}'
     @tool.credentials = { 'SHARED_KEY' => 'from_tool' }
     @tool.working_directory = nil
     executor = Tools::Executor.new(agent_tool: @tool)
 
-    status = stub(exitstatus: 0)
-    Open3.expects(:capture3).with(
-      { 'SHARED_KEY' => 'from_principal' },
-      'env',
-      chdir: Rails.root.to_s
-    ).returns(['output', '', status])
-
-    result = executor.call({}, extra_env: { 'SHARED_KEY' => 'from_principal' })
+    result = executor.call(
+      { 'cmd' => 'echo $SHARED_KEY' },
+      extra_env: { 'SHARED_KEY' => 'from_principal' }
+    )
     assert_equal 0, result.exit_code
+    assert_includes result.stdout, 'from_principal'
+    refute_includes result.stdout, 'from_tool'
   end
 end
