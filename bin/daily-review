@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Daily conversation review — runs via cron, invokes Claude Code to:
+# 1. Query last 24h of conversations from production DB
+# 2. Identify systemic issues (prompt gaps, confused responses, failed tools, etc.)
+# 3. Open a PR with targeted fixes, stripped of any identifying information
+# 4. File GitHub issues for larger architectural improvements
+
+cd /srv/steward
+
+LOG_DIR="/srv/steward/log"
+LOG_FILE="$LOG_DIR/daily-review-$(date +%Y%m%d).log"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "=== Daily review started at $(date -u) ==="
+
+# Ensure we're on a clean main branch
+git fetch origin main
+git checkout main
+git reset --hard origin/main
+
+cat config/daily-review-prompt.md | claude -p \
+  --model sonnet \
+  --allowedTools 'Bash(run rails runner scripts for DB queries:*),Bash(git operations:*),Bash(create PR or issues with gh:*),Read,Write,Edit,Glob,Grep' \
+  >> "$LOG_FILE" 2>&1
+
+echo "=== Daily review finished at $(date -u) ==="
