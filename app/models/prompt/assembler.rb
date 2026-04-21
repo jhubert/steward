@@ -212,7 +212,7 @@ module Prompt
       parts = []
 
       other_threads.each do |conv|
-        label = conv.title || "#{conv.channel} conversation"
+        label = conv.title.presence || conv.metadata&.dig("email_subject").presence || "#{conv.channel} conversation"
         summary = conv.state&.summary
         if summary.present?
           remaining = char_budget - chars_used
@@ -289,12 +289,12 @@ module Prompt
     end
 
     def find_background_conversation
-      Conversation.find_by(
+      Conversation.where(
         workspace: @conversation.workspace,
         user: @conversation.user,
         agent: @conversation.agent,
         channel: "background"
-      )
+      ).order(updated_at: :desc).first
     end
 
     # How many messages before the summary cutoff to keep as overlap.
