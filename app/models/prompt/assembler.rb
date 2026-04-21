@@ -322,10 +322,22 @@ module Prompt
       # Anthropic API only accepts user/assistant roles in messages array;
       # filter out system messages (session break notices etc. live in the summary)
       multi_party_email = email_multi_party?
+      tz = ActiveSupport::TimeZone[@agent.settings&.dig("timezone") || "Pacific Time (US & Canada)"]
+      prev_date = nil
       recent.filter_map do |msg|
         next if msg.role == 'system'
 
         content = msg.content_blocks_for_api
+
+        local_time = msg.created_at.in_time_zone(tz)
+        current_date = local_time.to_date
+        timestamp = if current_date != prev_date
+                      local_time.strftime('%a %b %-d, %-I:%M %p %Z')
+                    else
+                      local_time.strftime('%-I:%M %p %Z')
+                    end
+        prev_date = current_date
+        content = prepend_prefix(content, "[#{timestamp}] ")
 
         # In multi-party email threads, label user messages with sender info
         if multi_party_email && msg.role == 'user'
@@ -347,9 +359,11 @@ module Prompt
     end
 
     def prepend_sender_label(content_blocks, label)
-      prefix = "[From: #{label}]\n"
+      prepend_prefix(content_blocks, "[From: #{label}]\n")
+    end
+
+    def prepend_prefix(content_blocks, prefix)
       if content_blocks.is_a?(Array)
-        # Find first text block and prepend
         content_blocks.map.with_index do |block, i|
           if i == 0 && block.is_a?(Hash) && block[:type] == "text"
             block.merge(text: prefix + block[:text])

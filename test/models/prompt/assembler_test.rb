@@ -198,13 +198,13 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     history_contents = messages[1..].map { |m| m[:content] }
 
     # Messages well before the cutoff should be excluded (outside overlap window)
-    refute_includes history_contents, 'Far old message 0'
+    refute history_contents.any? { |c| c.to_s.include?('Far old message 0') }
 
     # The cutoff message itself should be included (within overlap window)
-    assert_includes history_contents, 'Message right at compaction cutoff'
+    assert history_contents.any? { |c| c.to_s.include?('Message right at compaction cutoff') }
 
     # Messages after the cutoff should be included
-    assert_includes history_contents, 'New message after compaction'
+    assert history_contents.any? { |c| c.to_s.include?('New message after compaction') }
   end
 
   test 'includes background context for background conversations' do
