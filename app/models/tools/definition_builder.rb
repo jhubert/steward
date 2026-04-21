@@ -225,6 +225,18 @@ module Tools
       }
     }.freeze
 
+    GMAIL_READ_THREAD_TOOL = {
+      name: "gmail_read_thread",
+      description: "Read a Gmail thread from your inbox and get back a clean plaintext digest of every message (sender, recipients, date, body with quoted history stripped). Use this whenever you need to understand what was said in an email thread — it is the only correct way to read an email. Do NOT try to decode Gmail's base64 bodies yourself via shell; use this tool so the content you see is verifiably the real email.",
+      input_schema: {
+        "type" => "object",
+        "properties" => {
+          "thread_id" => { "type" => "string", "description" => "The Gmail thread ID (e.g. from a check_email result or a gmail search)." }
+        },
+        "required" => ["thread_id"]
+      }
+    }.freeze
+
     def initialize(agent:, conversation: nil)
       @agent = agent
       @conversation = conversation
@@ -236,6 +248,7 @@ module Tools
       tools << SEND_MESSAGE_TOOL if @conversation&.background?
       tools << INVITE_USER_TOOL if @agent.settings&.dig("can_invite")
       tools << SEND_EMAIL_TOOL if @agent.email_handle.present?
+      tools << GMAIL_READ_THREAD_TOOL if @agent.own_gog_env.present?
       tools << GENERATE_PAIRING_CODE_TOOL if @agent.principal_mode? && @conversation && @agent.principal?(@conversation.user)
       tools << CONSULT_AGENT_TOOL if @agent.principal_mode? && @conversation && @agent.principal?(@conversation.user) && @agent.fellow_agents(@conversation.user).any?
       tools.presence

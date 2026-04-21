@@ -362,6 +362,8 @@ class ProcessMessageJob < ApplicationJob
       execute_send_message(input, conversation)
     when "send_email"
       execute_send_email(input, conversation)
+    when "gmail_read_thread"
+      execute_gmail_read_thread(input, conversation)
     when "create_skill"
       execute_create_skill(input, conversation)
     when "invite_user"
@@ -616,6 +618,21 @@ class ProcessMessageJob < ApplicationJob
       virtual_result("send_message", "Message delivered to user via #{delivery_conv.channel}.", input: text.truncate(200))
     rescue Adapters::DeliveryError => e
       virtual_result("send_message", "Message saved but delivery failed: #{e.message}", input: text.truncate(200))
+    end
+  end
+
+  def execute_gmail_read_thread(input, conversation)
+    thread_id = input["thread_id"].to_s.strip
+    if thread_id.empty?
+      return virtual_result("gmail_read_thread", "Error: 'thread_id' is required.")
+    end
+
+    result = Tools::GmailReader.new(conversation.agent).call(thread_id: thread_id)
+
+    if result.ok?
+      virtual_result("gmail_read_thread", result.content, input: "thread_id=#{thread_id}")
+    else
+      virtual_result("gmail_read_thread", "Error: #{result.error}", input: "thread_id=#{thread_id}")
     end
   end
 
