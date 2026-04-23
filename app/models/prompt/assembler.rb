@@ -85,6 +85,8 @@ module Prompt
       "invite_user" => "Invite a new user to the platform by email. Use when a principal asks you to invite someone. Creates their account and sends a welcome email.",
       "send_email" => "Compose and send an email to anyone. Use when a principal asks you to email someone — a client, colleague, or anyone else. You can start new threads or reply to existing ones. Recipients can reply and you'll handle their responses.",
       "gmail_read_thread" => "Read a Gmail thread and get back a clean plaintext digest of every message. ALWAYS use this to read emails — do NOT try to decode Gmail base64 bodies yourself via shell. The tool output is authoritative; if the real email content isn't in the tool result, you haven't read it.",
+      "gmail_reply" => "Reply to an existing Gmail thread. Pass only thread_id + body — recipients, threading headers, and subject are auto-derived from the latest inbound message so you cannot expand the CC list or mis-thread the reply. Your body MUST include a short literal quote (15+ chars, 3+ words) from the sender's latest message, or the send is rejected. This is the ONLY way to reply to an email.",
+      "gmail_new_thread" => "Start a NEW Gmail thread to someone who has emailed you before or who is on your allowlist. Recipients outside that set are rejected — escalate to Jeremy via send_message first so he can approve or pre-send. Do not use this to reply to an existing thread (use gmail_reply).",
       "consult_agent" => "Consult a fellow agent for their expert opinion. Use when another agent's expertise would help — e.g., asking a financial advisor about tax implications or a scheduling agent about availability."
     }.freeze
 
@@ -113,12 +115,12 @@ module Prompt
         lines << "- **invite_user**: #{CAPABILITY_HINTS['invite_user']}"
       end
 
-      if @agent.email_handle.present?
-        lines << "- **send_email**: #{CAPABILITY_HINTS['send_email']}"
-      end
-
       if @agent.own_gog_env.present?
         lines << "- **gmail_read_thread**: #{CAPABILITY_HINTS['gmail_read_thread']}"
+        lines << "- **gmail_reply**: #{CAPABILITY_HINTS['gmail_reply']}"
+        lines << "- **gmail_new_thread**: #{CAPABILITY_HINTS['gmail_new_thread']}"
+      elsif @agent.email_handle.present?
+        lines << "- **send_email**: #{CAPABILITY_HINTS['send_email']}"
       end
 
       if @agent.principal_mode? && @conversation.user && @agent.fellow_agents(@conversation.user).any?

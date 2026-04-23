@@ -237,6 +237,35 @@ module Tools
       }
     }.freeze
 
+    GMAIL_REPLY_TOOL = {
+      name: "gmail_reply",
+      description: "Reply to an existing Gmail thread. Recipients (To/Cc), threading headers, and subject are derived automatically from the latest inbound message — you cannot override them. The draft body must contain a direct literal quote of at least a few words from the message you are replying to; otherwise the send will be rejected as ungrounded. This is the ONLY correct way to reply to a customer or external email.",
+      input_schema: {
+        "type" => "object",
+        "properties" => {
+          "thread_id" => { "type" => "string", "description" => "The Gmail thread ID you are replying to." },
+          "body" => { "type" => "string", "description" => "Plain-text body of your reply. Must include a literal quoted phrase (≥15 chars, ≥3 words) from the sender's latest message so the system can verify your reply addresses what they actually wrote." },
+          "include_quote" => { "type" => "boolean", "description" => "Whether to include the original message quoted below your reply (default: true, recommended for external threads)." }
+        },
+        "required" => ["thread_id", "body"]
+      }
+    }.freeze
+
+    GMAIL_NEW_THREAD_TOOL = {
+      name: "gmail_new_thread",
+      description: "Start a new Gmail email thread (outbound-initiated). Recipients must be known to you already — either principals of yours, past inbound correspondents, or explicitly allowlisted. Sending to a brand-new external address will be rejected; escalate to Jeremy via send_message first.",
+      input_schema: {
+        "type" => "object",
+        "properties" => {
+          "to" => { "type" => "string", "description" => "Recipient email address(es), comma-separated" },
+          "cc" => { "type" => "string", "description" => "CC email address(es), comma-separated (optional)" },
+          "subject" => { "type" => "string", "description" => "Subject line" },
+          "body" => { "type" => "string", "description" => "Plain-text body" }
+        },
+        "required" => ["to", "subject", "body"]
+      }
+    }.freeze
+
     def initialize(agent:, conversation: nil)
       @agent = agent
       @conversation = conversation
@@ -247,8 +276,16 @@ module Tools
       tools.concat(BUILTIN_TOOLS)
       tools << SEND_MESSAGE_TOOL if @conversation&.background?
       tools << INVITE_USER_TOOL if @agent.settings&.dig("can_invite")
-      tools << SEND_EMAIL_TOOL if @agent.email_handle.present?
-      tools << GMAIL_READ_THREAD_TOOL if @agent.own_gog_env.present?
+      # GOG agents use the structured gmail_* tools. Postmark-only agents
+      # continue to use send_email (Postmark has its own threading model and
+      # doesn't suffer the same recipient-derivation problem).
+      if @agent.own_gog_env.present?
+        tools << GMAIL_READ_THREAD_TOOL
+        tools << GMAIL_REPLY_TOOL
+        tools << GMAIL_NEW_THREAD_TOOL
+      elsif @agent.email_handle.present?
+        tools << SEND_EMAIL_TOOL
+      end
       tools << GENERATE_PAIRING_CODE_TOOL if @agent.principal_mode? && @conversation && @agent.principal?(@conversation.user)
       tools << CONSULT_AGENT_TOOL if @agent.principal_mode? && @conversation && @agent.principal?(@conversation.user) && @agent.fellow_agents(@conversation.user).any?
       tools.presence

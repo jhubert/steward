@@ -42,6 +42,32 @@ class Tools::DefinitionBuilderTest < ActiveSupport::TestCase
     assert_not_includes names, 'send_invoice'
   end
 
+  test 'GOG-enabled agent gets gmail_* tools and NOT send_email' do
+    jennifer = agents(:jennifer)
+    jennifer.stubs(:own_gog_env).returns({ "GOG_ACCOUNT" => "jennifer@example.com" })
+
+    builder = Tools::DefinitionBuilder.new(agent: jennifer)
+    names = builder.call.map { |d| d[:name] }
+
+    assert_includes names, 'gmail_read_thread'
+    assert_includes names, 'gmail_reply'
+    assert_includes names, 'gmail_new_thread'
+    assert_not_includes names, 'send_email'
+  end
+
+  test 'Postmark-only agent (email_handle without GOG) gets send_email and NOT gmail_* tools' do
+    jennifer = agents(:jennifer)
+    jennifer.stubs(:own_gog_env).returns(nil)
+
+    builder = Tools::DefinitionBuilder.new(agent: jennifer)
+    names = builder.call.map { |d| d[:name] }
+
+    assert_includes names, 'send_email'
+    assert_not_includes names, 'gmail_reply'
+    assert_not_includes names, 'gmail_new_thread'
+    assert_not_includes names, 'gmail_read_thread'
+  end
+
   test 'does not include send_message for normal conversations' do
     conversation = conversations(:alice_telegram)
     builder = Tools::DefinitionBuilder.new(agent: agents(:steward), conversation: conversation)

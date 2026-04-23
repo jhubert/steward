@@ -364,6 +364,10 @@ class ProcessMessageJob < ApplicationJob
       execute_send_email(input, conversation)
     when "gmail_read_thread"
       execute_gmail_read_thread(input, conversation)
+    when "gmail_reply"
+      execute_gmail_reply(input, conversation)
+    when "gmail_new_thread"
+      execute_gmail_new_thread(input, conversation)
     when "create_skill"
       execute_create_skill(input, conversation)
     when "invite_user"
@@ -634,6 +638,229 @@ class ProcessMessageJob < ApplicationJob
     else
       virtual_result("gmail_read_thread", "Error: #{result.error}", input: "thread_id=#{thread_id}")
     end
+  end
+
+  def execute_gmail_reply(input, conversation)
+    thread_id = input["thread_id"].to_s.strip
+    body = input["body"].to_s
+    include_quote = input.fetch("include_quote", true)
+
+    agent = conversation.agent
+    gog_env = agent.own_gog_env
+    return virtual_result("gmail_reply", "Error: Agent does not have GOG configured.") unless gog_env
+    return virtual_result("gmail_reply", "Error: 'thread_id' is required.") if thread_id.empty?
+    return virtual_result("gmail_reply", "Error: 'body' is required.") if body.strip.empty?
+
+    latest = fetch_latest_inbound(gog_env, thread_id)
+    return virtual_result("gmail_reply", "Error: Could not fetch thread #{thread_id}: #{latest[:error]}", input: "thread_id=#{thread_id}") if latest[:error]
+    return virtual_result("gmail_reply", "Error: Thread has no inbound message to reply to (all messages are from you).", input: "thread_id=#{thread_id}") unless latest[:message]
+
+    qb = Tools::EmailGate::QuoteBack.new.call(inbound_body: latest[:body], draft_body: body)
+    unless qb.ok?
+      return virtual_result(
+        "gmail_reply",
+        "Error: Reply rejected — #{qb.reason}",
+        input: "thread_id=#{thread_id}"
+      )
+    end
+
+    subject = derive_reply_subject(latest[:subject])
+
+    argv = ["/usr/local/bin/gog", "gmail", "send",
+            "--thread-id", thread_id,
+            "--reply-all",
+            "--subject", subject,
+            "--body-html", plain_text_to_html(body),
+            "--json", "--no-input"]
+    argv << "--quote" if include_quote
+
+    begin
+      stdout, stderr, status = Open3.capture3(gog_env, *argv)
+      unless status.success?
+        return virtual_result("gmail_reply", "Failed to send reply via Gmail: #{(stderr.presence || stdout).to_s.truncate(500)}", input: "thread_id=#{thread_id}")
+      end
+
+      response = JSON.parse(stdout) rescue {}
+      gmail_message_id = response["id"]
+      gmail_thread_id = response["threadId"] || thread_id
+
+      persist_email_send(agent, conversation, gmail_thread_id:, gmail_message_id:, subject:, to_header: latest[:from_email], cc_header: latest[:cc], body:, reply: true)
+
+      virtual_result(
+        "gmail_reply",
+        "Reply sent in thread #{gmail_thread_id}. Recipients were auto-derived (reply-all): To=#{latest[:from_email]}#{latest[:cc].present? ? ", Cc=#{latest[:cc]}" : ''}. Subject: #{subject}.",
+        input: "thread_id=#{thread_id}"
+      )
+    rescue => e
+      virtual_result("gmail_reply", "Failed to send reply: #{e.message}", input: "thread_id=#{thread_id}")
+    end
+  end
+
+  def execute_gmail_new_thread(input, conversation)
+    to = input["to"].to_s.strip
+    cc = input["cc"].to_s.strip.presence
+    subject = input["subject"].to_s.strip
+    body = input["body"].to_s
+
+    agent = conversation.agent
+    gog_env = agent.own_gog_env
+    return virtual_result("gmail_new_thread", "Error: Agent does not have GOG configured.") unless gog_env
+    if to.empty? || subject.empty? || body.strip.empty?
+      return virtual_result("gmail_new_thread", "Error: 'to', 'subject', and 'body' are all required.")
+    end
+
+    recipients = [to, cc].compact
+    allow = Tools::EmailGate::Allowlist.new(agent).call(recipients)
+    unless allow.ok?
+      return virtual_result(
+        "gmail_new_thread",
+        "Error: Recipients not on allowlist: #{allow.blocked.join(', ')}. " \
+        "First-time outbound to a stranger requires explicit approval. " \
+        "Send a `send_message` to Jeremy asking him to add the address to the agent's email_allowlist, or to send the first email manually so the address becomes a known correspondent.",
+        input: "to=#{to}".truncate(200)
+      )
+    end
+
+    argv = ["/usr/local/bin/gog", "gmail", "send",
+            "--to", to,
+            "--subject", subject,
+            "--body-html", plain_text_to_html(body),
+            "--json", "--no-input"]
+    argv += ["--cc", cc] if cc
+
+    begin
+      stdout, stderr, status = Open3.capture3(gog_env, *argv)
+      unless status.success?
+        return virtual_result("gmail_new_thread", "Failed to send: #{(stderr.presence || stdout).to_s.truncate(500)}", input: "to=#{to}".truncate(200))
+      end
+
+      response = JSON.parse(stdout) rescue {}
+      gmail_message_id = response["id"]
+      gmail_thread_id = response["threadId"]
+
+      persist_email_send(agent, conversation, gmail_thread_id:, gmail_message_id:, subject:, to_header: to, cc_header: cc, body:, reply: false)
+
+      virtual_result(
+        "gmail_new_thread",
+        "New thread started. Message sent to #{to}#{cc ? " (cc: #{cc})" : ''}. Subject: #{subject}. Thread ID: #{gmail_thread_id}.",
+        input: "to=#{to}, subject=#{subject}".truncate(200)
+      )
+    rescue => e
+      virtual_result("gmail_new_thread", "Failed to send: #{e.message}", input: "to=#{to}".truncate(200))
+    end
+  end
+
+  # Fetch the latest non-own message from a Gmail thread.
+  # Returns { message:, body:, subject:, from_email:, cc: } or { error: ... }.
+  def fetch_latest_inbound(gog_env, thread_id)
+    argv = ["/usr/local/bin/gog", "gmail", "thread", "get", thread_id, "--full", "--json", "--no-input"]
+    stdout, stderr, status = Open3.capture3(gog_env, *argv)
+    return { error: (stderr.presence || stdout).to_s.truncate(300) } unless status.success?
+
+    data = JSON.parse(stdout) rescue {}
+    messages = data.dig("thread", "messages") || []
+    return { error: "thread has no messages" } if messages.empty?
+
+    own_email = gog_env["GOG_ACCOUNT"].to_s.downcase
+    inbound = messages.reverse.find do |m|
+      labels = m["labelIds"] || []
+      # Skip our own sent messages; an inbound either isn't labelled SENT or
+      # isn't from us.
+      next false if labels.include?("SENT")
+      headers_hash(m)["from"].to_s.downcase.include?(own_email) == false
+    end
+    inbound ||= messages.reject { |m| (m["labelIds"] || []).include?("SENT") }.last
+    return { message: nil } unless inbound
+
+    headers = headers_hash(inbound)
+    body_text = extract_body_via_reader(inbound)
+
+    {
+      message: inbound,
+      body: body_text,
+      subject: headers["subject"],
+      from_email: extract_email(headers["from"]),
+      cc: headers["cc"]
+    }
+  end
+
+  def headers_hash(msg)
+    (msg["payload"]&.dig("headers") || []).to_h { |h| [h["name"].to_s.downcase, h["value"]] }
+  end
+
+  def extract_email(header_value)
+    # "Name <email@example.com>" -> "email@example.com"
+    header_value.to_s.sub(/.*<([^>]+)>.*/, '\1').strip
+  end
+
+  def extract_body_via_reader(msg)
+    # Reuse GmailReader's body extraction by building a shim that walks the
+    # same way. For this code path we just need the plaintext body, not the
+    # full thread formatting.
+    reader = Tools::GmailReader.allocate
+    text = reader.send(:extract_body, msg["payload"]) || msg["snippet"].to_s
+    reader.send(:strip_quoted_history, text.to_s)
+  end
+
+  def derive_reply_subject(original_subject)
+    subj = original_subject.to_s.strip
+    return "Re: (no subject)" if subj.empty?
+    subj.match?(/\ARe:\s/i) ? subj : "Re: #{subj}"
+  end
+
+  def persist_email_send(agent, trigger_conversation, gmail_thread_id:, gmail_message_id:, subject:, to_header:, cc_header:, body:, reply:)
+    principal_user = trigger_conversation.user
+    external_thread_key = gmail_thread_id.present? ? "gmail:#{gmail_thread_id}" : "gmail:#{gmail_message_id}"
+
+    email_conv = Conversation.unscoped.find_by(
+      workspace: trigger_conversation.workspace,
+      agent: agent,
+      channel: "email",
+      external_thread_key: external_thread_key
+    )
+
+    unless email_conv
+      email_conv = Conversation.create!(
+        workspace: trigger_conversation.workspace,
+        user: principal_user,
+        agent: agent,
+        channel: "email",
+        external_thread_key: external_thread_key
+      )
+
+      recipients = to_header.to_s.split(",").map(&:strip)
+      recipients += cc_header.to_s.split(",").map(&:strip) if cc_header
+      own_email = agent.own_gog_env&.[]("GOG_ACCOUNT").to_s.downcase
+      participants = recipients
+        .reject { |e| e.empty? || extract_email(e).downcase == own_email }
+        .map { |e| { "email" => extract_email(e).downcase, "name" => e.split("@").first } }
+
+      email_conv.update!(metadata: {
+        "email_subject" => subject,
+        "email_participants" => participants,
+        "gmail_thread_id" => gmail_thread_id,
+        "last_gmail_message_id" => gmail_message_id
+      }.compact)
+    else
+      email_conv.update!(metadata: (email_conv.metadata || {}).merge(
+        "gmail_thread_id" => gmail_thread_id,
+        "last_gmail_message_id" => gmail_message_id
+      ).compact)
+    end
+
+    email_conv.messages.create!(
+      workspace: trigger_conversation.workspace,
+      user: principal_user,
+      role: "assistant",
+      content: body,
+      metadata: {
+        "gmail_message_id" => gmail_message_id,
+        "source" => reply ? "gmail_reply_tool" : "gmail_new_thread_tool",
+        "email_to" => to_header,
+        "email_cc" => cc_header,
+        "email_subject" => subject
+      }.compact
+    )
   end
 
   def execute_send_email(input, conversation)
