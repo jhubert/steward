@@ -74,7 +74,14 @@ class Conversation < ApplicationRecord
     now_time = current_message.created_at.in_time_zone(zone).strftime("%-I:%M %p %Z on %A")
     gap_notice = "\n\n---\nSession break: #{gap_hours} hours passed (previous: #{prev_time}, now: #{now_time})."
 
-    s.advance_summary!(new_summary + gap_notice, unsummarized.last.id)
+    first_id = unsummarized.first.id
+    last_id  = unsummarized.last.id
+    s.advance_summary!(new_summary + gap_notice, last_id)
+
+    # Capture the just-closed session as a searchable Episode so the agent
+    # can later recall "we talked about X on Tuesday" without grepping
+    # transcripts. Async — never blocks the user-facing reply.
+    BuildEpisodeJob.perform_later(id, first_id, last_id)
   end
 
   def background?

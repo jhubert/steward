@@ -27,7 +27,7 @@ module Memory
     #   user_ids: search across multiple users (for principal mode)
     def search(query:, category: nil, user_ids: nil)
       scope_override = if user_ids.present?
-        MemoryItem.where(workspace: @workspace, user_id: user_ids, agent: @agent)
+        MemoryItem.current.where(workspace: @workspace, user_id: user_ids, agent: @agent)
       else
         base_scope
       end
@@ -43,7 +43,7 @@ module Memory
     private
 
     def base_scope
-      MemoryItem.where(workspace: @workspace, user: @user, agent: @agent)
+      MemoryItem.current.where(workspace: @workspace, user: @user, agent: @agent)
     end
 
     def semantic_search(query, scope: nil)

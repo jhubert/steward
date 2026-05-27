@@ -90,7 +90,7 @@ module Prompt
 
       fellows.each do |ap|
         name = ap.display_name.presence || ap.user.name.presence || "principal"
-        items = MemoryItem.where(user: ap.user, agent: @agent).order(created_at: :desc).limit(20)
+        items = MemoryItem.current.where(user: ap.user, agent: @agent).order(created_at: :desc).limit(20)
         next if items.empty?
 
         lines = []

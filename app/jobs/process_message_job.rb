@@ -72,8 +72,15 @@ class ProcessMessageJob < ApplicationJob
 
     # Mark this (user, agent) relationship as having had a fresh interaction —
     # used by the cross-channel timeline and idle compaction sweeps.
-    AgentUserState.for(user: conversation.user, agent: conversation.agent)
-                  .touch_interaction!(message)
+    relationship_state = AgentUserState.for(user: conversation.user, agent: conversation.agent)
+    relationship_state.touch_interaction!(message)
+
+    # Rebuild the relationship summary if it's never been built or has drifted
+    # behind by an hour of fresh activity. Cheap when no-op (job is gated).
+    if relationship_state.last_summarized_at.blank? ||
+       relationship_state.last_summarized_at < 1.hour.ago
+      RelationshipSummaryJob.perform_later(relationship_state.id)
+    end
 
     # Sibling sweep: any other conversation between the same user and agent
     # that has gone stale (idle past IDLE_HOURS with unsummarized/unextracted

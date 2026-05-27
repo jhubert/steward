@@ -26,11 +26,13 @@ module Prompt
       parts << platform_charter
       parts << agent_core
       parts << date_context
+      parts << relationship_context
       parts << capabilities_context
       parts << principal_context if @agent.principal_mode?
       parts << skill_instructions if active_skills.any?
       parts << conversation_state if has_conversation_state?
       parts << long_term_recall if @incoming_message.present?
+      parts << recent_episodes
       parts << cross_channel_timeline
       parts << thread_catalog
       parts << background_activity_briefing unless @conversation.background?
@@ -200,6 +202,104 @@ module Prompt
 
     def long_term_recall
       Memory::Retriever.new(@conversation, budget: @budgets['retrieval'] || 800).call(query: @incoming_message)
+    end
+
+    # The relationship-level context: who the user is, the running summary,
+    # active goals, outgoing commitments, and "how long since we last spoke."
+    # This is the "human collaborator" anchor — independent of channel, it
+    # persists across every conversation between this user and this agent.
+    def relationship_context
+      return nil if @conversation.user.blank? || @conversation.agent.blank?
+
+      state = AgentUserState.unscoped.find_by(
+        workspace_id: @conversation.workspace_id,
+        user_id: @conversation.user_id,
+        agent_id: @conversation.agent_id
+      )
+      return nil unless state
+
+      sections = []
+
+      if state.last_interaction_at.present?
+        delta = Time.current - state.last_interaction_at
+        gap = humanize_gap(delta)
+        sections << "**Last interaction with this user:** #{gap}"
+      end
+
+      if state.summary.present?
+        sections << "### Relationship Summary\n#{state.summary}"
+      end
+
+      goals = Array(state.active_goals)
+      if goals.any?
+        lines = goals.first(8).map { |g| "- #{g}" }.join("\n")
+        sections << "### Active Goals (across all channels)\n#{lines}"
+      end
+
+      commitments = Array(state.outgoing_commitments)
+      if commitments.any?
+        lines = commitments.first(8).map do |c|
+          if c.is_a?(Hash)
+            label = c["text"].presence || c.to_s
+            made = c["made_at"] ? " (made #{Memory::Retriever.relative_date(Time.parse(c["made_at"]))})" : ""
+            "- #{label}#{made}"
+          else
+            "- #{c}"
+          end
+        end.join("\n")
+        sections << "### Outgoing Commitments You Made\n#{lines}"
+      end
+
+      return nil if sections.empty?
+
+      "## Relationship Context\n#{sections.join("\n\n")}"
+    end
+
+    # Recent episodes: discrete past sessions, each with a title and short
+    # narrative. Lets the agent naturally reference "when we talked on
+    # Tuesday" instead of grepping facts.
+    def recent_episodes
+      return nil if @conversation.user.blank? || @conversation.agent.blank?
+
+      episodes = Episode.unscoped.where(
+        workspace_id: @conversation.workspace_id,
+        user_id: @conversation.user_id,
+        agent_id: @conversation.agent_id
+      ).recent.limit(5).to_a.reverse
+
+      return nil if episodes.empty?
+
+      char_budget = (@budgets['episodes'] || 800) * 4
+      chars_used = 0
+      lines = []
+
+      episodes.each do |ep|
+        date = ep.started_at.strftime('%b %-d')
+        chan = ep.channel
+        title = ep.title.presence || 'untitled'
+        summary = ep.summary.to_s.truncate(220)
+        line = "- [#{date}, #{chan}] **#{title}** — #{summary}"
+        break if chars_used + line.length > char_budget
+        chars_used += line.length
+        lines << line
+      end
+
+      return nil if lines.empty?
+
+      "## Recent Episodes With This User\n" \
+      "Past sessions you've had with this user. Use them to anchor 'when we " \
+      "talked about X' references.\n\n#{lines.join("\n")}"
+    end
+
+    def humanize_gap(seconds)
+      return "moments ago" if seconds < 60
+      return "#{(seconds / 60).to_i} minutes ago" if seconds < 3600
+      return "#{(seconds / 3600).to_i} hours ago" if seconds < 86_400
+      days = (seconds / 86_400).to_i
+      return "#{days} day#{'s' if days != 1} ago" if days < 14
+      weeks = (seconds / (86_400 * 7)).to_i
+      return "#{weeks} week#{'s' if weeks != 1} ago" if days < 90
+      "on #{Time.current.advance(seconds: -seconds.to_i).strftime('%Y-%m-%d')}"
     end
 
     # Rolling cross-channel timeline of recent messages with this user across

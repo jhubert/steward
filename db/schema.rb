@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_27_071758) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_27_072947) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -118,6 +118,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_071758) do
     t.index ["workspace_id"], name: "index_conversations_on_workspace_id"
   end
 
+  create_table "episodes", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.string "channel", null: false
+    t.bigint "conversation_id", null: false
+    t.datetime "created_at", null: false
+    t.vector "embedding", limit: 1536
+    t.datetime "ended_at", null: false
+    t.bigint "first_message_id"
+    t.bigint "last_message_id"
+    t.jsonb "metadata", default: {}
+    t.datetime "started_at", null: false
+    t.text "summary"
+    t.string "title"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.bigint "workspace_id", null: false
+    t.index ["agent_id"], name: "index_episodes_on_agent_id"
+    t.index ["conversation_id"], name: "index_episodes_on_conversation_id"
+    t.index ["embedding"], name: "index_episodes_on_embedding", opclass: :vector_cosine_ops, using: :hnsw
+    t.index ["user_id"], name: "index_episodes_on_user_id"
+    t.index ["workspace_id", "user_id", "agent_id", "started_at"], name: "idx_episodes_relationship_time"
+    t.index ["workspace_id"], name: "index_episodes_on_workspace_id"
+  end
+
   create_table "invites", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email", null: false
@@ -136,18 +160,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_071758) do
   create_table "memory_items", force: :cascade do |t|
     t.bigint "agent_id"
     t.string "category"
+    t.float "confidence"
     t.text "content", null: false
     t.bigint "conversation_id"
     t.datetime "created_at", null: false
     t.vector "embedding", limit: 1536
     t.jsonb "metadata", default: {}
+    t.datetime "observed_at"
+    t.datetime "superseded_at"
+    t.bigint "supersedes_id"
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.bigint "workspace_id", null: false
     t.index ["agent_id"], name: "index_memory_items_on_agent_id"
     t.index ["conversation_id"], name: "index_memory_items_on_conversation_id"
     t.index ["embedding"], name: "index_memory_items_on_embedding", opclass: :vector_cosine_ops, using: :hnsw
+    t.index ["supersedes_id"], name: "index_memory_items_on_supersedes_id"
     t.index ["user_id"], name: "index_memory_items_on_user_id"
+    t.index ["workspace_id", "user_id", "agent_id"], name: "idx_memory_items_current", where: "(superseded_at IS NULL)"
     t.index ["workspace_id", "user_id", "category"], name: "index_memory_items_on_workspace_id_and_user_id_and_category"
     t.index ["workspace_id"], name: "index_memory_items_on_workspace_id"
   end
@@ -388,11 +418,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_071758) do
   add_foreign_key "conversations", "agents"
   add_foreign_key "conversations", "users"
   add_foreign_key "conversations", "workspaces"
+  add_foreign_key "episodes", "agents"
+  add_foreign_key "episodes", "conversations"
+  add_foreign_key "episodes", "users"
+  add_foreign_key "episodes", "workspaces"
   add_foreign_key "invites", "users"
   add_foreign_key "invites", "users", column: "invited_by_id"
   add_foreign_key "invites", "workspaces"
   add_foreign_key "memory_items", "agents"
   add_foreign_key "memory_items", "conversations"
+  add_foreign_key "memory_items", "memory_items", column: "supersedes_id"
   add_foreign_key "memory_items", "users"
   add_foreign_key "memory_items", "workspaces"
   add_foreign_key "messages", "agents"

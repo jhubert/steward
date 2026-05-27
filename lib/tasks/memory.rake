@@ -55,4 +55,54 @@ namespace :memory do
     puts "[memory:backfill_phase1] Enqueued compact=#{enqueued_compact} extract=#{enqueued_extract}"
     puts "[memory:backfill_phase1] Done at #{Time.current}"
   end
+
+  desc "Backfill episodes and enqueue relationship summaries (Phase 2)"
+  task backfill_phase2: :environment do
+    puts "[memory:backfill_phase2] Starting at #{Time.current}"
+
+    # 1) For every conversation that has been summarized (state.summary
+    #    present, summarized_through_message_id set), create a single
+    #    backfill episode covering its summarized message range — best-effort
+    #    one-shot. Future episodes are produced naturally by session breaks
+    #    and idle compactions.
+    built = 0
+    skipped = 0
+    Conversation.unscoped.find_each do |conv|
+      Current.workspace = conv.workspace
+      state = conv.state
+      next unless state&.summary.present? && state.summarized_through_message_id
+
+      msgs = conv.messages.where('id <= ?', state.summarized_through_message_id).order(:id)
+      next if msgs.empty?
+
+      first_id = msgs.first.id
+      last_id  = msgs.last.id
+
+      if Episode.unscoped.where(conversation_id: conv.id, first_message_id: first_id, last_message_id: last_id).exists?
+        skipped += 1
+        next
+      end
+
+      BuildEpisodeJob.perform_later(conv.id, first_id, last_id)
+      built += 1
+    end
+
+    puts "[memory:backfill_phase2] Episodes: enqueued=#{built} already_present=#{skipped}"
+
+    # 2) Enqueue RelationshipSummaryJob for every AgentUserState that has
+    #    activity but no summary yet (or a stale one).
+    enqueued = 0
+    AgentUserState.unscoped.find_each do |state|
+      Current.workspace = state.workspace
+      next if state.last_interaction_at.blank?
+      next if state.last_summarized_at.present? &&
+              state.last_summarized_at >= state.last_interaction_at
+
+      RelationshipSummaryJob.perform_later(state.id)
+      enqueued += 1
+    end
+
+    puts "[memory:backfill_phase2] RelationshipSummaryJob enqueued=#{enqueued}"
+    puts "[memory:backfill_phase2] Done at #{Time.current}"
+  end
 end

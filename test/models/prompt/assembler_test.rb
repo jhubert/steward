@@ -205,6 +205,46 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     assert_not_includes timeline_section, 'BG_TIMELINE_LEAK'
   end
 
+  test 'relationship context renders summary and last interaction gap' do
+    state = AgentUserState.for(user: @conversation.user, agent: @conversation.agent)
+    state.update!(
+      summary: "Alice and the agent have been planning a Q3 offsite.",
+      last_interaction_at: 2.hours.ago,
+      active_goals: ["Finalize venue", "Book travel"],
+      outgoing_commitments: ["Send Alice the budget"]
+    )
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Relationship Context'
+    assert_includes system_content, 'planning a Q3 offsite'
+    assert_includes system_content, 'Finalize venue'
+    assert_includes system_content, 'Send Alice the budget'
+    assert_match(/Last interaction with this user/, system_content)
+    assert_match(/2 hours ago/, system_content)
+  end
+
+  test 'recent episodes section renders dated episode list' do
+    Episode.create!(
+      workspace: workspaces(:default),
+      user: @conversation.user,
+      agent: @conversation.agent,
+      conversation: @conversation,
+      channel: 'telegram',
+      title: 'Birthday planning kickoff',
+      summary: 'Alice and the agent discussed venue ideas for the birthday.',
+      started_at: 3.days.ago,
+      ended_at: 3.days.ago + 30.minutes
+    )
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Recent Episodes With This User'
+    assert_includes system_content, 'Birthday planning kickoff'
+  end
+
   test 'cross-channel timeline ignores activity older than 24 hours' do
     email_thread = Conversation.create!(
       workspace: workspaces(:default),
