@@ -16,6 +16,43 @@ class MessageTest < ActiveSupport::TestCase
     assert_includes message.errors[:role], 'is not included in the list'
   end
 
+  test 'denormalizes user_id/agent_id/workspace_id from conversation on create' do
+    conv = conversations(:alice_telegram)
+    msg = conv.messages.create!(role: 'user', content: 'hello')
+    assert_equal conv.user_id, msg.user_id
+    assert_equal conv.agent_id, msg.agent_id
+    assert_equal conv.workspace_id, msg.workspace_id
+  end
+
+  test 'denormalization does not overwrite explicitly provided values' do
+    conv = conversations(:alice_telegram)
+    other_user = users(:bob)
+    msg = Message.new(
+      conversation: conv,
+      user: other_user,
+      role: 'user',
+      content: 'hi'
+    )
+    msg.valid?
+    assert_equal other_user.id, msg.user_id
+  end
+
+  test 'for_user_agent scope returns messages across all conversations for (user, agent)' do
+    other_channel = Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:steward),
+      channel: 'email',
+      external_thread_key: 'msg_test_email'
+    )
+    cross_msg = other_channel.messages.create!(role: 'user', content: 'cross channel')
+
+    scoped = Message.for_user_agent(users(:alice), agents(:steward))
+    assert_includes scoped, cross_msg
+    assert_includes scoped, messages(:alice_hello)
+    assert_not_includes scoped, messages(:bob_jennifer_hello)
+  end
+
   test 'chronological scope orders by created_at' do
     messages = conversations(:alice_telegram).messages.chronological
     assert_equal messages, messages.sort_by(&:created_at)

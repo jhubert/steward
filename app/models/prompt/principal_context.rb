@@ -89,12 +89,15 @@ module Prompt
       chars_used = 0
 
       fellows.each do |ap|
+        name = ap.display_name.presence || ap.user.name.presence || "principal"
         items = MemoryItem.where(user: ap.user, agent: @agent).order(created_at: :desc).limit(20)
         next if items.empty?
 
         lines = []
         items.each do |item|
-          line = "- [#{item.category}] #{item.content}"
+          # Always-on provenance label — even with one fellow, the model must
+          # be able to see whose memory it's drawing from before quoting it back.
+          line = "- [#{item.category}] [from #{name}] #{item.content} (#{Memory::Retriever.relative_date(item.created_at)})"
           break if chars_used + line.length > char_limit
           chars_used += line.length
           lines << line

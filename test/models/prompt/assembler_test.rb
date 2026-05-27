@@ -106,9 +106,11 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
     assert_not_includes system_content, 'Long-Term Memory'
   end
 
-  test 'includes thread catalog with titled conversations' do
-    # Create another conversation with a title
-    Conversation.create!(
+  test 'includes thread catalog with summarized conversations' do
+    # Thread catalog renders sibling threads that have a rolling summary.
+    # Recent unsummarized activity is covered by the cross-channel timeline;
+    # the catalog is for older threads with substantive history.
+    sibling = Conversation.create!(
       workspace: workspaces(:default),
       user: users(:alice),
       agent: agents(:steward),
@@ -116,12 +118,108 @@ class Prompt::AssemblerTest < ActiveSupport::TestCase
       external_thread_key: 'catalog_test',
       title: 'Planning the team offsite'
     )
+    sibling.create_state!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      summary: 'Discussed venue options for the team offsite in Q3.'
+    )
 
     messages = Prompt::Assembler.new(@conversation).call
     system_content = messages.first[:content]
 
     assert_includes system_content, 'Context From Other Conversations'
     assert_includes system_content, 'Planning the team offsite'
+  end
+
+  test 'thread catalog excludes sibling conversations without a summary' do
+    Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:steward),
+      channel: 'telegram',
+      external_thread_key: 'catalog_no_summary',
+      title: 'Pending compaction'
+    )
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, 'Context From Other Conversations'
+  end
+
+  test 'cross-channel timeline surfaces recent activity from sibling threads' do
+    # Create an email thread for the same (user, agent) with a fresh message.
+    email_thread = Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:steward),
+      channel: 'email',
+      external_thread_key: 'timeline_email_test'
+    )
+    cross = email_thread.messages.create!(role: 'user', content: 'Following up on the Q2 deck')
+    cross.update_column(:created_at, 30.minutes.ago)
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_includes system_content, 'Recent Activity With This User'
+    assert_includes system_content, 'Q2 deck'
+    assert_includes system_content, 'email'
+  end
+
+  test 'cross-channel timeline excludes the current conversation' do
+    # Add a fresh message to the current conversation — it should appear in
+    # build_history (the recent-messages window) but NOT in the timeline.
+    current_msg = @conversation.messages.create!(role: 'user', content: 'TIMELINE_SELF_EXCLUDE')
+    current_msg.update_column(:created_at, 30.minutes.ago)
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    # No timeline section at all when only current-conv messages qualify
+    assert_not_includes system_content, 'Recent Activity With This User'
+  end
+
+  test 'cross-channel timeline excludes background conversations' do
+    bg = Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:steward),
+      channel: 'background',
+      external_thread_key: 'timeline_bg_test'
+    )
+    msg = bg.messages.create!(role: 'user', content: 'BG_TIMELINE_LEAK')
+    msg.update_column(:created_at, 30.minutes.ago)
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    # Background activity has its own briefing section — what we're guarding
+    # against is it leaking into the new cross-channel timeline. Either the
+    # timeline section is absent entirely, or it doesn't mention the bg message.
+    timeline_section = if system_content.include?('## Recent Activity With This User')
+      system_content.split('## Recent Activity With This User').last.split(/^## /).first
+    else
+      ""
+    end
+    assert_not_includes timeline_section, 'BG_TIMELINE_LEAK'
+  end
+
+  test 'cross-channel timeline ignores activity older than 24 hours' do
+    email_thread = Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:steward),
+      channel: 'email',
+      external_thread_key: 'timeline_stale_test'
+    )
+    old = email_thread.messages.create!(role: 'user', content: 'TIMELINE_TOO_OLD')
+    old.update_column(:created_at, 2.days.ago)
+
+    messages = Prompt::Assembler.new(@conversation).call
+    system_content = messages.first[:content]
+
+    assert_not_includes system_content, 'TIMELINE_TOO_OLD'
   end
 
   test 'omits thread catalog when no other conversations exist' do

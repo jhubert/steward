@@ -3,6 +3,9 @@ class Message < ApplicationRecord
 
   belongs_to :conversation
   belongs_to :user
+  belongs_to :agent
+
+  before_validation :denormalize_from_conversation, on: :create
 
   validates :role, presence: true, inclusion: { in: %w[user assistant system] }
   validates :content, presence: true
@@ -14,6 +17,10 @@ class Message < ApplicationRecord
     scope = scope.where('id > ?', message_id) if message_id
     scope
   }
+
+  # Cross-channel timeline source: every message with this user+agent across
+  # all conversations and channels. Caller adds channel/recency filters.
+  scope :for_user_agent, ->(user, agent) { where(user_id: user.id, agent_id: agent.id) }
 
   TEXT_READABLE_EXTENSIONS = %w[
     .csv .md .json .xml .log .html .htm .yml .yaml .rb .py .js .ts .jsx .tsx
@@ -55,6 +62,14 @@ class Message < ApplicationRecord
   end
 
   private
+
+  def denormalize_from_conversation
+    return unless conversation
+
+    self.user_id ||= conversation.user_id
+    self.agent_id ||= conversation.agent_id
+    self.workspace_id ||= conversation.workspace_id
+  end
 
   def build_image_block(att)
     data = read_and_encode(att["file_path"])

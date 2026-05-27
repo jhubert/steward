@@ -67,6 +67,54 @@ class ConversationTest < ActiveSupport::TestCase
     assert conv.needs_extraction?
   end
 
+  # --- Idle triggers (Phase 1) ---
+
+  test 'stale_for_compaction? false when no messages' do
+    conv = Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:bob),
+      agent: agents(:steward),
+      channel: 'telegram',
+      external_thread_key: 'idle_test_empty'
+    )
+    assert_not conv.stale_for_compaction?
+  end
+
+  test 'stale_for_compaction? false when latest message is fresh' do
+    conv = conversations(:alice_telegram)
+    assert_not conv.stale_for_compaction?
+  end
+
+  test 'stale_for_compaction? true when latest unsummarized message is older than IDLE_HOURS' do
+    conv = conversations(:alice_telegram)
+    conv.messages.each { |m| m.update_column(:created_at, (Conversation::IDLE_HOURS + 1).hours.ago) }
+    assert conv.stale_for_compaction?
+  end
+
+  test 'stale_for_compaction? false once all messages are already summarized' do
+    conv = conversations(:alice_telegram)
+    conv.messages.each { |m| m.update_column(:created_at, 1.week.ago) }
+    last_id = conv.messages.order(:id).last.id
+    conv.ensure_state!.update!(summarized_through_message_id: last_id, summary: 'done')
+    assert_not conv.stale_for_compaction?
+  end
+
+  test 'stale_for_extraction? mirrors compaction logic against extraction pointer' do
+    conv = conversations(:alice_telegram)
+    conv.messages.each { |m| m.update_column(:created_at, (Conversation::IDLE_HOURS + 1).hours.ago) }
+    assert conv.stale_for_extraction?
+
+    last_id = conv.messages.order(:id).last.id
+    conv.ensure_state!.update!(extracted_through_message_id: last_id)
+    assert_not conv.stale_for_extraction?
+  end
+
+  test 'needs_compaction? returns true via idle trigger even below count threshold' do
+    conv = conversations(:alice_telegram)
+    conv.messages.each { |m| m.update_column(:created_at, (Conversation::IDLE_HOURS + 1).hours.ago) }
+    assert conv.needs_compaction?
+  end
+
   # --- find_by_email_thread ---
 
   test 'find_by_email_thread finds email conversation by thread key regardless of user' do

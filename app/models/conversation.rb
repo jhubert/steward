@@ -14,6 +14,7 @@ class Conversation < ApplicationRecord
 
   COMPACTION_THRESHOLD = 20
   EXTRACTION_THRESHOLD = 10
+  IDLE_HOURS = 6
 
   def ensure_state!
     state || create_state!(workspace: workspace, user: user)
@@ -21,12 +22,30 @@ class Conversation < ApplicationRecord
 
   def needs_compaction?
     last_summarized = state&.summarized_through_message_id || 0
+    return true if stale_for_compaction?(last_summarized)
     messages.where('id > ?', last_summarized).count >= COMPACTION_THRESHOLD
   end
 
   def needs_extraction?
     last_extracted = state&.extracted_through_message_id || 0
+    return true if stale_for_extraction?(last_extracted)
     messages.where('id > ?', last_extracted).count >= EXTRACTION_THRESHOLD
+  end
+
+  # Idle-trigger: there's unsummarized content AND the most recent unsummarized
+  # message is older than IDLE_HOURS — flush it before it falls into the gap.
+  def stale_for_compaction?(last_summarized = nil)
+    last_summarized ||= state&.summarized_through_message_id || 0
+    last = messages.where('id > ?', last_summarized).order(:id).last
+    return false unless last
+    last.created_at < IDLE_HOURS.hours.ago
+  end
+
+  def stale_for_extraction?(last_extracted = nil)
+    last_extracted ||= state&.extracted_through_message_id || 0
+    last = messages.where('id > ?', last_extracted).order(:id).last
+    return false unless last
+    last.created_at < IDLE_HOURS.hours.ago
   end
 
   def session_break_needed?(current_message)

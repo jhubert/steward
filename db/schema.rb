@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_22_084819) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_27_071758) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -49,6 +49,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_22_084819) do
     t.index ["agent_id"], name: "index_agent_tools_on_agent_id"
     t.index ["workspace_id", "agent_id", "name"], name: "idx_agent_tools_unique", unique: true
     t.index ["workspace_id"], name: "index_agent_tools_on_workspace_id"
+  end
+
+  create_table "agent_user_states", force: :cascade do |t|
+    t.jsonb "active_goals", default: []
+    t.bigint "agent_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "last_interaction_at"
+    t.datetime "last_summarized_at"
+    t.jsonb "outgoing_commitments", default: []
+    t.jsonb "pinned_facts", default: []
+    t.text "scratchpad"
+    t.bigint "summarized_through_message_id"
+    t.text "summary"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.bigint "workspace_id", null: false
+    t.index ["agent_id"], name: "index_agent_user_states_on_agent_id"
+    t.index ["user_id"], name: "index_agent_user_states_on_user_id"
+    t.index ["workspace_id", "user_id", "agent_id"], name: "idx_agent_user_states_unique", unique: true
+    t.index ["workspace_id"], name: "index_agent_user_states_on_workspace_id"
   end
 
   create_table "agents", force: :cascade do |t|
@@ -133,6 +153,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_22_084819) do
   end
 
   create_table "messages", force: :cascade do |t|
+    t.bigint "agent_id", null: false
     t.text "content", null: false
     t.bigint "conversation_id", null: false
     t.datetime "created_at", null: false
@@ -144,6 +165,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_22_084819) do
     t.bigint "workspace_id", null: false
     t.index ["conversation_id", "created_at"], name: "index_messages_on_conversation_id_and_created_at"
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
+    t.index ["user_id", "agent_id", "created_at"], name: "idx_messages_user_agent_created"
     t.index ["user_id"], name: "index_messages_on_user_id"
     t.index ["workspace_id"], name: "index_messages_on_workspace_id"
   end
@@ -356,6 +378,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_22_084819) do
   add_foreign_key "agent_principals", "workspaces"
   add_foreign_key "agent_tools", "agents"
   add_foreign_key "agent_tools", "workspaces"
+  add_foreign_key "agent_user_states", "agents"
+  add_foreign_key "agent_user_states", "users"
+  add_foreign_key "agent_user_states", "workspaces"
   add_foreign_key "agents", "workspaces"
   add_foreign_key "conversation_states", "conversations"
   add_foreign_key "conversation_states", "users"
@@ -370,6 +395,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_22_084819) do
   add_foreign_key "memory_items", "conversations"
   add_foreign_key "memory_items", "users"
   add_foreign_key "memory_items", "workspaces"
+  add_foreign_key "messages", "agents"
   add_foreign_key "messages", "conversations"
   add_foreign_key "messages", "users"
   add_foreign_key "messages", "workspaces"

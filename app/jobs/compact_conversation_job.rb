@@ -8,7 +8,8 @@ class CompactConversationJob < ApplicationJob
     state = conversation.ensure_state!
     unsummarized = state.unsummarized_messages.limit(50)
 
-    return if unsummarized.count < Conversation::COMPACTION_THRESHOLD
+    return if unsummarized.empty?
+    return if unsummarized.count < Conversation::COMPACTION_THRESHOLD && !conversation.stale_for_compaction?
 
     summarizer = Compaction::Summarizer.new(agent: conversation.agent)
     new_summary = summarizer.call(

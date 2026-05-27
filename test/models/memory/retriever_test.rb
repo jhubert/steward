@@ -32,6 +32,40 @@ class Memory::RetrieverTest < ActiveSupport::TestCase
     assert_includes result, "Alice works at Acme Corp"
   end
 
+  test 'format includes relative date on every item' do
+    item = MemoryItem.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:jennifer),
+      conversation: @conversation,
+      category: 'fact',
+      content: 'Alice prefers tea over coffee'
+    )
+    item.update_column(:created_at, 3.days.ago)
+
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    result = Memory::Retriever.new(@conversation, budget: 800).call(query: "Alice tea coffee")
+    assert_match(/\(3d ago\)/, result)
+  end
+
+  test 'relative_date returns today for same-day timestamps' do
+    assert_equal "today", Memory::Retriever.relative_date(Time.current)
+  end
+
+  test 'relative_date uses days within two weeks' do
+    assert_equal "5d ago", Memory::Retriever.relative_date(5.days.ago)
+  end
+
+  test 'relative_date uses weeks beyond two weeks' do
+    assert_equal "3w ago", Memory::Retriever.relative_date(3.weeks.ago)
+  end
+
+  test 'relative_date falls back to absolute date beyond 90 days' do
+    t = 4.months.ago
+    assert_equal t.strftime("%Y-%m-%d"), Memory::Retriever.relative_date(t)
+  end
+
   test 'enforces user isolation — does not return other users items' do
     Rails.configuration.stubs(:openai_client).returns(nil)
 

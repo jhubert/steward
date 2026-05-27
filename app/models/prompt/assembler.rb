@@ -31,6 +31,7 @@ module Prompt
       parts << skill_instructions if active_skills.any?
       parts << conversation_state if has_conversation_state?
       parts << long_term_recall if @incoming_message.present?
+      parts << cross_channel_timeline
       parts << thread_catalog
       parts << background_activity_briefing unless @conversation.background?
       parts << background_context if @conversation.background?
@@ -201,6 +202,69 @@ module Prompt
       Memory::Retriever.new(@conversation, budget: @budgets['retrieval'] || 800).call(query: @incoming_message)
     end
 
+    # Rolling cross-channel timeline of recent messages with this user across
+    # all conversations (excluding the current one and background processing).
+    # Bounded by recency (last 24h) and message count (last 30).
+    # This is the "short-term memory" tier — captures the just-happened context
+    # that hasn't yet been summarized into thread_catalog or extracted into
+    # memory items.
+    TIMELINE_WINDOW = 24.hours
+    TIMELINE_MESSAGE_LIMIT = 30
+
+    def cross_channel_timeline
+      return nil if @conversation.user.blank? || @conversation.agent.blank?
+
+      messages = Message.for_user_agent(@conversation.user, @conversation.agent)
+                        .where('messages.created_at > ?', TIMELINE_WINDOW.ago)
+                        .where.not(conversation_id: @conversation.id)
+                        .joins(:conversation)
+                        .where.not(conversations: { channel: "background" })
+                        .where.not(role: "system")
+                        .includes(:conversation)
+                        .order(created_at: :desc)
+                        .limit(TIMELINE_MESSAGE_LIMIT)
+                        .to_a
+                        .reverse  # chronological for rendering
+
+      return nil if messages.empty?
+
+      tz = ActiveSupport::TimeZone[@agent.settings&.dig("timezone") || "Pacific Time (US & Canada)"]
+      char_budget = (@budgets['cross_channel'] || 1500) * 4
+      chars_used = 0
+      lines = []
+      prev_date = nil
+
+      messages.each do |msg|
+        local = msg.created_at.in_time_zone(tz)
+        date = local.to_date
+        if date != prev_date
+          header = "[#{local.strftime('%a %b %-d')}]"
+          lines << header
+          chars_used += header.length + 1
+          prev_date = date
+        end
+
+        time = local.strftime('%-I:%M%P')
+        role_label = msg.role == 'user' ? @conversation.user.name.presence || 'user' : 'you'
+        snippet = msg.content.to_s.gsub(/\s+/, ' ').strip.truncate(280)
+        line = "[#{time} #{msg.conversation.channel}] #{role_label}: #{snippet}"
+
+        break if chars_used + line.length > char_budget
+        lines << line
+        chars_used += line.length + 1
+      end
+
+      return nil if lines.empty?
+
+      "## Recent Activity With This User (last 24h, all channels)\n" \
+      "These are exchanges with the same user on other channels. Use them to " \
+      "maintain continuity — if they reference something they just said " \
+      "elsewhere, look here first.\n\n#{lines.join("\n")}"
+    end
+
+    # The thread catalog now only renders sibling conversations with a
+    # rolling summary — fresh activity is covered by cross_channel_timeline,
+    # and one-liner stubs were never useful enough to justify the prompt space.
     def thread_catalog
       other_threads = Conversation.where(
         workspace: @conversation.workspace,
@@ -210,27 +274,26 @@ module Prompt
        .where.not(channel: "background")
        .includes(:state)
        .order(updated_at: :desc)
-       .limit(5)
+       .limit(10)
 
-      return nil if other_threads.empty?
+      summarized = other_threads.select { |c| c.state&.summary.present? }
+      return nil if summarized.empty?
 
       char_budget = (@budgets['cross_channel'] || 1500) * 4
       chars_used = 0
       parts = []
 
-      other_threads.each do |conv|
+      summarized.first(5).each do |conv|
         label = conv.title.presence || conv.metadata&.dig("email_subject").presence || "#{conv.channel} conversation"
-        summary = conv.state&.summary
-        if summary.present?
-          remaining = char_budget - chars_used
-          break if remaining < 200
-          truncated = summary.truncate(remaining)
-          parts << "### #{label} (#{conv.channel}, last active #{conv.updated_at.strftime('%b %-d')})\n#{truncated}"
-          chars_used += truncated.length
-        else
-          parts << "- #{label} (#{conv.channel}, last active #{conv.updated_at.strftime('%b %-d')})"
-        end
+        summary = conv.state.summary
+        remaining = char_budget - chars_used
+        break if remaining < 200
+        truncated = summary.truncate(remaining)
+        parts << "### #{label} (#{conv.channel}, last active #{conv.updated_at.strftime('%b %-d')})\n#{truncated}"
+        chars_used += truncated.length
       end
+
+      return nil if parts.empty?
 
       "## Context From Other Conversations\n" \
       "You have other conversation threads with this user. Use this context " \

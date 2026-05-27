@@ -113,7 +113,7 @@ module Memory
       lines = []
 
       items.each do |item|
-        line = "- [#{item.category}] #{item.content}"
+        line = "- [#{item.category}] #{item.content} (#{Memory::Retriever.relative_date(item.created_at)})"
         break if chars_used + line.length > char_limit
         chars_used += line.length
         lines << line
@@ -122,6 +122,19 @@ module Memory
       return nil if lines.empty?
 
       "## Long-Term Memory\n#{lines.join("\n")}"
+    end
+
+    # Human-readable relative date. Within 90 days, returns "today",
+    # "2d ago", "3w ago"; older dates use absolute YYYY-MM-DD.
+    def self.relative_date(time)
+      return "unknown date" unless time
+      delta = Time.current - time
+      return "today" if delta < 24.hours && time.to_date == Time.current.to_date
+      days = (delta / 1.day).to_i
+      return "#{days}d ago" if days < 14
+      weeks = (delta / 7.days).to_i
+      return "#{weeks}w ago" if days < 90
+      time.strftime("%Y-%m-%d")
     end
 
     def sanitize_like(string)

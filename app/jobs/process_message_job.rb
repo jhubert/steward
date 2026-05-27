@@ -69,6 +69,24 @@ class ProcessMessageJob < ApplicationJob
     CompactConversationJob.perform_later(conversation.id) if conversation.needs_compaction?
     ExtractMemoryJob.perform_later(conversation.id) if conversation.needs_extraction?
     GenerateTitleJob.perform_later(conversation.id) if conversation.title.blank?
+
+    # Mark this (user, agent) relationship as having had a fresh interaction —
+    # used by the cross-channel timeline and idle compaction sweeps.
+    AgentUserState.for(user: conversation.user, agent: conversation.agent)
+                  .touch_interaction!(message)
+
+    # Sibling sweep: any other conversation between the same user and agent
+    # that has gone stale (idle past IDLE_HOURS with unsummarized/unextracted
+    # content) gets a compaction/extraction pass. Cheap to enqueue — jobs no-op
+    # when there's nothing to do.
+    Conversation.where(workspace_id: conversation.workspace_id,
+                       user_id: conversation.user_id,
+                       agent_id: conversation.agent_id)
+                .where.not(id: conversation.id)
+                .find_each do |sibling|
+      CompactConversationJob.perform_later(sibling.id) if sibling.stale_for_compaction?
+      ExtractMemoryJob.perform_later(sibling.id) if sibling.stale_for_extraction?
+    end
   end
 
   private

@@ -2,6 +2,7 @@ alice_hello:
   conversation: alice_telegram
   workspace: default
   user: alice
+  agent: steward
   role: user
   content: "Hello, Steward!"
   metadata: {}
@@ -10,6 +11,7 @@ steward_reply:
   conversation: alice_telegram
   workspace: default
   user: alice
+  agent: steward
   role: assistant
   content: "Hello Alice! How can I help you today?"
   metadata: {}
@@ -18,6 +20,7 @@ alice_jennifer_hello:
   conversation: alice_jennifer
   workspace: default
   user: alice
+  agent: jennifer
   role: user
   content: "Hi Jennifer, what's on the agenda today?"
   metadata: {}
@@ -26,6 +29,7 @@ jennifer_reply_alice:
   conversation: alice_jennifer
   workspace: default
   user: alice
+  agent: jennifer
   role: assistant
   content: "Good morning, Alice! Let me check your schedule."
   metadata: {}
@@ -34,6 +38,7 @@ alice_markus_hello:
   conversation: alice_markus
   workspace: default
   user: alice
+  agent: markus
   role: user
   content: "Markus, what's our tax situation?"
   metadata: {}
@@ -42,6 +47,7 @@ bob_jennifer_hello:
   conversation: bob_jennifer
   workspace: default
   user: bob
+  agent: jennifer
   role: user
   content: "Jennifer, please schedule a meeting with Alice."
   metadata: {}
@@ -50,6 +56,7 @@ jennifer_reply_bob:
   conversation: bob_jennifer
   workspace: default
   user: bob
+  agent: jennifer
   role: assistant
   content: "Of course, Bob. I'll coordinate with Alice on that."
   metadata: {}

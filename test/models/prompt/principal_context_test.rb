@@ -108,6 +108,29 @@ class Prompt::PrincipalContextTest < ActiveSupport::TestCase
     assert_includes result, 'Bob committed to delivering the Q2 report by Friday'
   end
 
+  test 'cross-principal memories carry always-on provenance label' do
+    conversation = conversations(:alice_jennifer)
+    result = Prompt::PrincipalContext.new(conversation).call
+
+    cross_principal_section = result.split('## Cross-Principal Context').last
+    # Every line in the cross-principal section must tag its source so the
+    # current speaker's agent doesn't quote Bob's facts back to Alice unattributed.
+    cross_principal_section.lines.grep(/^- /).each do |line|
+      assert_match(/\[from /, line, "missing [from <name>] label: #{line.inspect}")
+    end
+  end
+
+  test 'cross-principal memories include a date marker on each item' do
+    conversation = conversations(:alice_jennifer)
+    result = Prompt::PrincipalContext.new(conversation).call
+
+    cross_principal_section = result.split('## Cross-Principal Context').last
+    cross_principal_section.lines.grep(/^- /).each do |line|
+      assert_match(/\((today|\d+d ago|\d+w ago|\d{4}-\d{2}-\d{2})\)/, line,
+                   "missing date suffix: #{line.inspect}")
+    end
+  end
+
   test 'excludes current user own memories from cross-principal section' do
     conversation = conversations(:alice_jennifer)
     result = Prompt::PrincipalContext.new(conversation).call
