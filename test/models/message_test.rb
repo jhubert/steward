@@ -1,6 +1,8 @@
 require 'test_helper'
 
 class MessageTest < ActiveSupport::TestCase
+  include ActiveJob::TestHelper
+
   setup do
     as_workspace(:default)
   end
@@ -35,6 +37,20 @@ class MessageTest < ActiveSupport::TestCase
     )
     msg.valid?
     assert_equal other_user.id, msg.user_id
+  end
+
+  test 'enqueues an EmbedMessageJob on create' do
+    conv = conversations(:alice_telegram)
+    assert_enqueued_with(job: EmbedMessageJob) do
+      conv.messages.create!(role: 'user', content: 'embed me please')
+    end
+  end
+
+  test 'does not enqueue embedding for system messages' do
+    conv = conversations(:alice_telegram)
+    assert_no_enqueued_jobs(only: EmbedMessageJob) do
+      conv.messages.create!(role: 'system', content: 'session break notice')
+    end
   end
 
   test 'for_user_agent scope returns messages across all conversations for (user, agent)' do

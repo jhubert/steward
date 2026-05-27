@@ -137,14 +137,40 @@ module Tools
               "type" => "string",
               "enum" => ["decision", "preference", "fact", "commitment"],
               "description" => "Optional: filter results to a specific memory type"
-            }
+            },
+            "since" => { "type" => "string", "description" => "Optional ISO datetime — only return memories observed/created on or after this time" },
+            "until" => { "type" => "string", "description" => "Optional ISO datetime — only return memories observed/created before this time" }
+          },
+          "required" => ["query"]
+        }
+      },
+      {
+        name: "recall_episodes",
+        description: "Search past conversation episodes — the discrete sessions you've had with this user — by semantic similarity. Use when you want to find 'the time we discussed X' or 'that conversation about Y' as a narrative, not just an extracted fact. Returns title, date, channel, summary, and conversation_id you can follow up on with read_transcript.",
+        input_schema: {
+          "type" => "object",
+          "properties" => {
+            "query" => { "type" => "string", "description" => "What you're trying to find — the topic, decision, or moment you want to recall" },
+            "limit" => { "type" => "integer", "description" => "Maximum results to return (default 5, max 15)" }
+          },
+          "required" => ["query"]
+        }
+      },
+      {
+        name: "search_transcripts",
+        description: "Semantically search the actual messages exchanged with this user across all channels. Use when you need to find a specific exchange — what they said, the wording of a request — not a summary or extracted fact. Returns matching message snippets with conversation_id and message_id so you can follow up with read_transcript for full context.",
+        input_schema: {
+          "type" => "object",
+          "properties" => {
+            "query" => { "type" => "string", "description" => "What you're searching for in the actual message content" },
+            "limit" => { "type" => "integer", "description" => "Maximum results to return (default 8, max 25)" }
           },
           "required" => ["query"]
         }
       },
       {
         name: "read_transcript",
-        description: "Read original conversation messages. Use after `recall` to get full context around a remembered fact, or to review earlier parts of any conversation.",
+        description: "Read original conversation messages. Use after `recall`, `recall_episodes`, or `search_transcripts` to get full context around a remembered fact, or to review earlier parts of any conversation.",
         input_schema: {
           "type" => "object",
           "properties" => {

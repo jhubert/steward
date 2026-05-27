@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_27_072947) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_27_074029) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -187,6 +187,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_072947) do
     t.text "content", null: false
     t.bigint "conversation_id", null: false
     t.datetime "created_at", null: false
+    t.datetime "embedded_at"
+    t.vector "embedding", limit: 1536
     t.jsonb "metadata", default: {}
     t.string "role", null: false
     t.integer "token_count"
@@ -195,6 +197,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_072947) do
     t.bigint "workspace_id", null: false
     t.index ["conversation_id", "created_at"], name: "index_messages_on_conversation_id_and_created_at"
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
+    t.index ["embedding"], name: "index_messages_on_embedding", opclass: :vector_cosine_ops, using: :hnsw
     t.index ["user_id", "agent_id", "created_at"], name: "idx_messages_user_agent_created"
     t.index ["user_id"], name: "index_messages_on_user_id"
     t.index ["workspace_id"], name: "index_messages_on_workspace_id"

@@ -1337,7 +1337,7 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert captured_tool_results
     tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
     assert_match(/operations team/, tool_content[:content])
-    assert_match(/Bob's memory/, tool_content[:content])
+    assert_match(/\[from Bob/, tool_content[:content])
   end
 
   test 'recall returns no-results message when nothing matches' do
@@ -1366,6 +1366,161 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert captured_tool_results
     tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
     assert_match(/No memories found/, tool_content[:content])
+  end
+
+  test 'recall honors since/until time-range filter' do
+    # Two memories: one old, one recent
+    old = MemoryItem.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:jennifer),
+      conversation: conversations(:alice_jennifer),
+      category: 'fact',
+      content: 'OLDMEMORY about Acme'
+    )
+    old.update_column(:created_at, 6.months.ago)
+    new_item = MemoryItem.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:jennifer),
+      conversation: conversations(:alice_jennifer),
+      category: 'fact',
+      content: 'NEWMEMORY about Acme'
+    )
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'recall',
+      tool_id: 'toolu_recall_since',
+      input: { 'query' => 'Acme', 'since' => 1.month.ago.iso8601 }
+    )
+    text_response = build_text_response('Filtered.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+    ProcessMessageJob.perform_now(jennifer_message.id)
+
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/NEWMEMORY/, tool_content[:content])
+    assert_no_match(/OLDMEMORY/, tool_content[:content])
+  end
+
+  # --- recall_episodes virtual tool tests ---
+
+  test 'recall_episodes returns matching episodes with date and ids' do
+    fake_vector = Array.new(1536) { 0.01 }
+    Episode.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: agents(:jennifer),
+      conversation: conversations(:alice_jennifer),
+      channel: 'telegram',
+      title: 'Tea preference chat',
+      summary: 'Alice mentioned she prefers tea over coffee.',
+      started_at: 3.days.ago,
+      ended_at: 3.days.ago + 10.minutes,
+      first_message_id: 1,
+      last_message_id: 2,
+      embedding: fake_vector
+    )
+
+    mock_client = mock('openai_client')
+    mock_client.stubs(:embeddings).returns({ "data" => [{ "embedding" => fake_vector }] })
+    Rails.configuration.stubs(:openai_client).returns(mock_client)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'recall_episodes',
+      tool_id: 'toolu_eps',
+      input: { 'query' => 'tea' }
+    )
+    text_response = build_text_response('Found it.')
+
+    messages_api = stub
+    captured = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      captured = user_msgs.last[:content] if user_msgs&.any?
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(messages(:alice_jennifer_hello).id)
+
+    result = captured.find { |r| r[:type] == 'tool_result' }
+    assert_match(/Tea preference chat/, result[:content])
+    assert_match(/episode_id=/, result[:content])
+  end
+
+  test 'recall_episodes returns helpful error when embeddings unavailable' do
+    Rails.configuration.stubs(:openai_client).returns(nil)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'recall_episodes',
+      tool_id: 'toolu_eps_noai',
+      input: { 'query' => 'anything' }
+    )
+    text_response = build_text_response('Acknowledged.')
+
+    messages_api = stub
+    captured = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      captured = user_msgs.last[:content] if user_msgs&.any?
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(messages(:alice_jennifer_hello).id)
+
+    result = captured.find { |r| r[:type] == 'tool_result' }
+    assert_match(/embedding service not configured/, result[:content])
+  end
+
+  # --- search_transcripts virtual tool tests ---
+
+  test 'search_transcripts returns matching messages with ids' do
+    fake_vector = Array.new(1536) { 0.02 }
+    msg = conversations(:alice_jennifer).messages.create!(
+      role: 'user',
+      content: 'Looking up that thing about restaurants in Toronto'
+    )
+    msg.update_columns(embedding: fake_vector, embedded_at: Time.current)
+
+    mock_client = mock('openai_client')
+    mock_client.stubs(:embeddings).returns({ "data" => [{ "embedding" => fake_vector }] })
+    Rails.configuration.stubs(:openai_client).returns(mock_client)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'search_transcripts',
+      tool_id: 'toolu_txn',
+      input: { 'query' => 'restaurants' }
+    )
+    text_response = build_text_response('Got it.')
+
+    messages_api = stub
+    captured = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      captured = user_msgs.last[:content] if user_msgs&.any?
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(messages(:alice_jennifer_hello).id)
+
+    result = captured.find { |r| r[:type] == 'tool_result' }
+    assert_match(/restaurants in Toronto/, result[:content])
+    assert_match(/message_id=#{msg.id}/, result[:content])
   end
 
   # --- read_transcript virtual tool tests ---

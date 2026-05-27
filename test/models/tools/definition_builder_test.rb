@@ -20,7 +20,7 @@ class Tools::DefinitionBuilderTest < ActiveSupport::TestCase
     definitions = builder.call
 
     assert_kind_of Array, definitions
-    assert_equal 15, definitions.length
+    assert_equal 17, definitions.length
 
     names = definitions.map { |d| d[:name] }
     assert_includes names, 'find_availability'

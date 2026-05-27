@@ -105,4 +105,28 @@ namespace :memory do
     puts "[memory:backfill_phase2] RelationshipSummaryJob enqueued=#{enqueued}"
     puts "[memory:backfill_phase2] Done at #{Time.current}"
   end
+
+  desc "Backfill message embeddings (Phase 3)"
+  task backfill_phase3: :environment do
+    puts "[memory:backfill_phase3] Starting at #{Time.current}"
+
+    # Only embed user/assistant messages. System messages (session-break
+    # notices etc.) aren't meaningful as searchable content.
+    scope = Message.unscoped
+                   .where(embedding: nil)
+                   .where.not(role: 'system')
+                   .where.not(content: [nil, ''])
+
+    total = scope.count
+    puts "[memory:backfill_phase3] #{total} messages need embedding"
+
+    enqueued = 0
+    scope.find_each(batch_size: 200) do |msg|
+      EmbedMessageJob.perform_later(msg.id)
+      enqueued += 1
+    end
+
+    puts "[memory:backfill_phase3] Enqueued #{enqueued} EmbedMessageJob(s) on :low_priority"
+    puts "[memory:backfill_phase3] Done at #{Time.current}"
+  end
 end

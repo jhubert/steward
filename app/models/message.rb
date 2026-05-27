@@ -1,11 +1,14 @@
 class Message < ApplicationRecord
   include WorkspaceScoped
 
+  has_neighbors :embedding
+
   belongs_to :conversation
   belongs_to :user
   belongs_to :agent
 
   before_validation :denormalize_from_conversation, on: :create
+  after_commit :enqueue_embedding, on: :create
 
   validates :role, presence: true, inclusion: { in: %w[user assistant system] }
   validates :content, presence: true
@@ -21,6 +24,8 @@ class Message < ApplicationRecord
   # Cross-channel timeline source: every message with this user+agent across
   # all conversations and channels. Caller adds channel/recency filters.
   scope :for_user_agent, ->(user, agent) { where(user_id: user.id, agent_id: agent.id) }
+
+  scope :with_embedding, -> { where.not(embedding: nil) }
 
   TEXT_READABLE_EXTENSIONS = %w[
     .csv .md .json .xml .log .html .htm .yml .yaml .rb .py .js .ts .jsx .tsx
@@ -69,6 +74,12 @@ class Message < ApplicationRecord
     self.user_id ||= conversation.user_id
     self.agent_id ||= conversation.agent_id
     self.workspace_id ||= conversation.workspace_id
+  end
+
+  def enqueue_embedding
+    return if role == "system"
+    return if content.blank?
+    EmbedMessageJob.perform_later(id)
   end
 
   def build_image_block(att)

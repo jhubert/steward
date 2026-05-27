@@ -399,6 +399,10 @@ class ProcessMessageJob < ApplicationJob
       execute_invite_user(input, conversation)
     when "recall"
       execute_recall(input, conversation)
+    when "recall_episodes"
+      execute_recall_episodes(input, conversation)
+    when "search_transcripts"
+      execute_search_transcripts(input, conversation)
     when "read_transcript"
       execute_read_transcript(input, conversation)
     when "generate_pairing_code"
@@ -1254,6 +1258,15 @@ class ProcessMessageJob < ApplicationJob
       return virtual_result("recall", "Error: Invalid category '#{category}'. Must be one of: #{Memory::Extractor::VALID_CATEGORIES.join(', ')}.")
     end
 
+    since_time = parse_iso(input["since"])
+    until_time = parse_iso(input["until"])
+    if input["since"].present? && since_time.nil?
+      return virtual_result("recall", "Error: Invalid 'since' datetime '#{input['since']}'. Use ISO 8601 format.")
+    end
+    if input["until"].present? && until_time.nil?
+      return virtual_result("recall", "Error: Invalid 'until' datetime '#{input['until']}'. Use ISO 8601 format.")
+    end
+
     agent = conversation.agent
     retriever = Memory::Retriever.new(conversation, budget: 2000)
 
@@ -1265,6 +1278,14 @@ class ProcessMessageJob < ApplicationJob
     end
 
     items = retriever.search(query: query, category: category, user_ids: user_ids)
+
+    # Apply optional time-range filter
+    if since_time
+      items = items.select { |i| (i.observed_at || i.created_at) >= since_time }
+    end
+    if until_time
+      items = items.select { |i| (i.observed_at || i.created_at) < until_time }
+    end
 
     if items.empty?
       return virtual_result("recall", "No memories found matching '#{query}'.", input: query.truncate(200))
@@ -1284,9 +1305,11 @@ class ProcessMessageJob < ApplicationJob
     lines = []
 
     items.each do |item|
-      date = item.created_at.strftime('%Y-%m-%d')
+      date = (item.observed_at || item.created_at).strftime('%Y-%m-%d')
       line = "- [#{item.category}] #{item.content} (#{date})"
-      line += " — #{user_names[item.user_id]}'s memory" if user_names.key?(item.user_id) && user_ids&.size.to_i > 1
+      # Always-on provenance in principal mode — even with one match, the model
+      # must see whose memory it's quoting before it speaks for them.
+      line += " [from #{user_names[item.user_id]}]" if user_names.key?(item.user_id)
       if item.conversation_id
         line += " [source: conversation=#{item.conversation_id}"
         if item.metadata&.dig("source_message_range")
@@ -1300,6 +1323,106 @@ class ProcessMessageJob < ApplicationJob
     end
 
     virtual_result("recall", "Found #{items.size} memor#{items.size == 1 ? 'y' : 'ies'}:\n#{lines.join("\n")}", input: query.truncate(200))
+  end
+
+  def parse_iso(str)
+    return nil if str.blank?
+    Time.parse(str)
+  rescue ArgumentError, TypeError
+    nil
+  end
+
+  def execute_recall_episodes(input, conversation)
+    query = input["query"].to_s.strip
+    limit = (input["limit"] || 5).to_i.clamp(1, 15)
+
+    if query.blank?
+      return virtual_result("recall_episodes", "Error: 'query' parameter is required.")
+    end
+
+    client = Rails.configuration.openai_client
+    if client.nil?
+      return virtual_result("recall_episodes", "Error: episode search unavailable (embedding service not configured).", input: query.truncate(200))
+    end
+
+    response = client.embeddings(
+      parameters: { model: "text-embedding-3-small", input: query }
+    )
+    vector = response.dig("data", 0, "embedding")
+    if vector.nil?
+      return virtual_result("recall_episodes", "Error: failed to embed query.", input: query.truncate(200))
+    end
+
+    episodes = Episode.unscoped
+                      .where(workspace_id: conversation.workspace_id,
+                             user_id: conversation.user_id,
+                             agent_id: conversation.agent_id)
+                      .with_embedding
+                      .nearest_neighbors(:embedding, vector, distance: :cosine)
+                      .limit(limit)
+                      .to_a
+
+    if episodes.empty?
+      return virtual_result("recall_episodes", "No matching episodes found for '#{query}'.", input: query.truncate(200))
+    end
+
+    lines = episodes.map do |ep|
+      date = ep.started_at.strftime('%Y-%m-%d')
+      summary = ep.summary.to_s.truncate(260)
+      "- [#{date}, #{ep.channel}] **#{ep.title}** — #{summary}\n  [episode_id=#{ep.id} conversation=#{ep.conversation_id} messages=#{ep.first_message_id}..#{ep.last_message_id}]"
+    end
+
+    virtual_result("recall_episodes",
+      "Found #{episodes.size} episode#{episodes.size == 1 ? '' : 's'}:\n#{lines.join("\n")}",
+      input: query.truncate(200))
+  end
+
+  def execute_search_transcripts(input, conversation)
+    query = input["query"].to_s.strip
+    limit = (input["limit"] || 8).to_i.clamp(1, 25)
+
+    if query.blank?
+      return virtual_result("search_transcripts", "Error: 'query' parameter is required.")
+    end
+
+    client = Rails.configuration.openai_client
+    if client.nil?
+      return virtual_result("search_transcripts", "Error: transcript search unavailable (embedding service not configured).", input: query.truncate(200))
+    end
+
+    response = client.embeddings(
+      parameters: { model: "text-embedding-3-small", input: query }
+    )
+    vector = response.dig("data", 0, "embedding")
+    if vector.nil?
+      return virtual_result("search_transcripts", "Error: failed to embed query.", input: query.truncate(200))
+    end
+
+    msgs = Message.unscoped
+                  .where(workspace_id: conversation.workspace_id,
+                         user_id: conversation.user_id,
+                         agent_id: conversation.agent_id)
+                  .with_embedding
+                  .joins(:conversation)
+                  .where.not(conversations: { channel: "background" })
+                  .nearest_neighbors(:embedding, vector, distance: :cosine)
+                  .limit(limit)
+                  .includes(:conversation)
+                  .to_a
+
+    if msgs.empty?
+      return virtual_result("search_transcripts", "No matching messages found for '#{query}'.", input: query.truncate(200))
+    end
+
+    lines = msgs.map do |m|
+      date = m.created_at.strftime('%Y-%m-%d %H:%M')
+      snippet = m.content.to_s.gsub(/\s+/, ' ').strip.truncate(280)
+      "- [#{date} #{m.conversation.channel}] #{m.role}: #{snippet}\n  [message_id=#{m.id} conversation=#{m.conversation_id}]"
+    end
+
+    virtual_result("search_transcripts",
+      "Found #{msgs.size} message#{msgs.size == 1 ? '' : 's'}:\n#{lines.join("\n")}",
+      input: query.truncate(200))
   end
 
   def execute_read_transcript(input, conversation)

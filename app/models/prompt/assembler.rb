@@ -83,8 +83,10 @@ module Prompt
       "cancel_scheduled_task" => "Cancel a scheduled task. Use when the user wants to stop a reminder or recurring task.",
       "github" => "Access GitHub via the `gh` CLI. Can list/view/create PRs, issues, releases, search code, and call the GitHub API. Pass the full subcommand without the `gh` prefix (e.g. `pr list --repo owner/repo`).",
       "send_message" => "Send a message to the user via Telegram or email (whichever channel they use). Only available in background processing mode. Use sparingly — only for events important enough to interrupt the user.",
-      "recall" => "Search your long-term memory with a targeted query. Use when you need to remember something specific — a past decision, preference, or fact — that isn't in your current context.",
-      "read_transcript" => "Read the original conversation messages that produced a memory. Use after `recall` to get full context around a remembered fact.",
+      "recall" => "Search your long-term memory (extracted facts) with a targeted query. Use when you need to remember something specific — a past decision, preference, or fact — that isn't in your current context. Supports optional since/until time-range filters.",
+      "recall_episodes" => "Search past conversation episodes (the discrete sessions you've had with this user) by semantic similarity. Use this when you want to find 'the time we discussed X' as a narrative — not just an extracted fact.",
+      "search_transcripts" => "Semantically search the actual messages exchanged with this user across all channels. Use when you need to find a specific exchange — what they said, the wording of a request — not a summary. Returns message snippets with message_id you can follow up on with read_transcript.",
+      "read_transcript" => "Read the original conversation messages that produced a memory. Use after `recall`, `recall_episodes`, or `search_transcripts` to get full context around a remembered fact.",
       "invite_user" => "Invite a new user to the platform by email. Use when a principal asks you to invite someone. Creates their account and sends a welcome email.",
       "send_email" => "Compose and send an email to anyone. Use when a principal asks you to email someone — a client, colleague, or anyone else. You can start new threads or reply to existing ones. Recipients can reply and you'll handle their responses.",
       "gmail_read_thread" => "Read a Gmail thread and get back a clean plaintext digest of every message. ALWAYS use this to read emails — do NOT try to decode Gmail base64 bodies yourself via shell. The tool output is authoritative; if the real email content isn't in the tool result, you haven't read it.",
@@ -106,7 +108,7 @@ module Prompt
       end
 
       # Builtin tools with hints (skip save_note/read_notes/google_setup — the LLM already understands those from the schema)
-      %w[download_file schedule_task list_scheduled_tasks cancel_scheduled_task recall read_transcript].each do |name|
+      %w[download_file schedule_task list_scheduled_tasks cancel_scheduled_task recall recall_episodes search_transcripts read_transcript].each do |name|
         lines << "- **#{name}**: #{CAPABILITY_HINTS[name]}"
       end
 
