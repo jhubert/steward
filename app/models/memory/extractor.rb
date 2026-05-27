@@ -12,8 +12,11 @@ module Memory
       You extract durable facts and impressions from a conversation segment
       that would be useful in FUTURE conversations with this user. Return a
       JSON array of objects with "category" and "content" keys. Each item
-      may also include "observed_at" (ISO date when the fact became true,
-      if mentioned).
+      may also include:
+        - "observed_at" (ISO date when the fact became true, if mentioned)
+        - "subject" (only for "commitment" items): "agent" if the AGENT
+          promised to do something, "user" if the user did. Defaults to
+          "user" if unclear.
 
       Categories:
       - decision: A choice the user made (e.g., "chose Rails over Django")
@@ -72,6 +75,10 @@ module Memory
         if item['observed_at'].present?
           observed = parse_observed_at(item['observed_at'])
           result[:observed_at] = observed if observed
+        end
+        if category == 'commitment' && item['subject'].present?
+          subject = item['subject'].to_s.strip
+          result[:subject] = subject if %w[user agent].include?(subject)
         end
         result
       end

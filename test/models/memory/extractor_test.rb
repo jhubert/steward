@@ -61,6 +61,27 @@ class Memory::ExtractorTest < ActiveSupport::TestCase
     assert_kind_of Time, result.first[:observed_at]
   end
 
+  test 'parse_response captures subject on commitment items' do
+    json = '[{"category": "commitment", "content": "Will send the deck Friday", "subject": "agent"}]'
+    result = @extractor.parse_response(json)
+
+    assert_equal "agent", result.first[:subject]
+  end
+
+  test 'parse_response ignores invalid subject values' do
+    json = '[{"category": "commitment", "content": "x", "subject": "garbage"}]'
+    result = @extractor.parse_response(json)
+
+    refute result.first.key?(:subject)
+  end
+
+  test 'parse_response only honors subject on commitment items' do
+    json = '[{"category": "fact", "content": "x", "subject": "agent"}]'
+    result = @extractor.parse_response(json)
+
+    refute result.first.key?(:subject)
+  end
+
   test 'parse_response skips items with blank content' do
     json = '[{"category": "fact", "content": ""}, {"category": "fact", "content": "Real fact"}]'
     result = @extractor.parse_response(json)

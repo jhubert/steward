@@ -17,6 +17,8 @@ class ExtractMemoryJob < ApplicationJob
 
     last_message = unextracted.last
 
+    outgoing_commitments_to_add = []
+
     items.each do |item|
       record = MemoryItem.create!(
         workspace: conversation.workspace,
@@ -29,6 +31,24 @@ class ExtractMemoryJob < ApplicationJob
         metadata: { source_message_range: [unextracted.first.id, last_message.id] }
       )
       GenerateEmbeddingJob.perform_later(record.id)
+
+      # Lift agent-side commitments into the relationship-level state so
+      # they surface at the top of every future prompt for this user until
+      # the agent marks them done.
+      if item[:category] == 'commitment' && item[:subject] == 'agent'
+        outgoing_commitments_to_add << {
+          "text" => item[:content],
+          "made_at" => Time.current.iso8601,
+          "memory_item_id" => record.id,
+          "source_conversation_id" => conversation.id
+        }
+      end
+    end
+
+    if outgoing_commitments_to_add.any?
+      relationship = AgentUserState.for(user: conversation.user, agent: conversation.agent)
+      existing = Array(relationship.outgoing_commitments)
+      relationship.update!(outgoing_commitments: existing + outgoing_commitments_to_add)
     end
 
     # Always advance pointer — even if nothing extracted — to avoid re-processing

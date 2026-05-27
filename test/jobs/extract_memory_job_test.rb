@@ -81,6 +81,23 @@ class ExtractMemoryJobTest < ActiveSupport::TestCase
     end
   end
 
+  test 'agent-subject commitments are appended to AgentUserState.outgoing_commitments' do
+    json = '[{"category": "commitment", "content": "Will send Alice the Q2 deck", "subject": "agent"},
+             {"category": "commitment", "content": "Will review the proposal", "subject": "user"}]'
+    stub_llm_response(json)
+
+    assert_difference -> { MemoryItem.count }, 2 do
+      ExtractMemoryJob.perform_now(@conversation.id)
+    end
+
+    state = AgentUserState.for(user: @conversation.user, agent: @conversation.agent)
+    assert_equal 1, state.outgoing_commitments.size
+    entry = state.outgoing_commitments.first
+    assert_equal "Will send Alice the Q2 deck", entry["text"]
+    assert entry["made_at"].present?
+    assert entry["memory_item_id"].present?
+  end
+
   private
 
   def stub_llm_response(text)
