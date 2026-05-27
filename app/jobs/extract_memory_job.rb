@@ -25,6 +25,7 @@ class ExtractMemoryJob < ApplicationJob
         conversation: conversation,
         category: item[:category],
         content: item[:content],
+        observed_at: item[:observed_at],
         metadata: { source_message_range: [unextracted.first.id, last_message.id] }
       )
       GenerateEmbeddingJob.perform_later(record.id)
@@ -40,14 +41,15 @@ class ExtractMemoryJob < ApplicationJob
 
   private
 
+  # Dedup context is scoped per-principal — extracting Alice's conversation
+  # only checks against Alice's existing memories. Previously this pooled
+  # all principals' memories together, which coupled them in a non-obvious
+  # way (e.g. Bob mentioning a fact Alice already stated wouldn't get
+  # extracted as Bob's, only Alice would have it).
   def dedup_context(conversation)
-    agent = conversation.agent
-
-    if agent.principal_mode?
-      principal_user_ids = agent.agent_principals.pluck(:user_id)
-      MemoryItem.where(user_id: principal_user_ids).order(created_at: :desc).limit(50)
-    else
-      MemoryItem.where(user: conversation.user).order(created_at: :desc).limit(50)
-    end
+    MemoryItem.current
+              .where(user: conversation.user, agent: conversation.agent)
+              .order(created_at: :desc)
+              .limit(50)
   end
 end

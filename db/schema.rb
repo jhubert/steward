@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_27_074029) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_27_074829) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -155,6 +155,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_074029) do
     t.index ["user_id"], name: "index_invites_on_user_id"
     t.index ["workspace_id", "email"], name: "index_invites_on_workspace_id_and_email", unique: true
     t.index ["workspace_id"], name: "index_invites_on_workspace_id"
+  end
+
+  create_table "memory_access_logs", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.string "context", null: false
+    t.bigint "conversation_id"
+    t.datetime "created_at", null: false
+    t.bigint "memory_item_id"
+    t.bigint "subject_user_id", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "viewing_user_id", null: false
+    t.bigint "workspace_id", null: false
+    t.index ["agent_id"], name: "index_memory_access_logs_on_agent_id"
+    t.index ["conversation_id"], name: "index_memory_access_logs_on_conversation_id"
+    t.index ["subject_user_id"], name: "index_memory_access_logs_on_subject_user_id"
+    t.index ["viewing_user_id"], name: "index_memory_access_logs_on_viewing_user_id"
+    t.index ["workspace_id", "agent_id", "subject_user_id", "created_at"], name: "idx_memory_access_logs_subject_time"
+    t.index ["workspace_id"], name: "index_memory_access_logs_on_workspace_id"
   end
 
   create_table "memory_items", force: :cascade do |t|
@@ -428,6 +446,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_074029) do
   add_foreign_key "invites", "users"
   add_foreign_key "invites", "users", column: "invited_by_id"
   add_foreign_key "invites", "workspaces"
+  add_foreign_key "memory_access_logs", "agents"
+  add_foreign_key "memory_access_logs", "conversations"
+  add_foreign_key "memory_access_logs", "users", column: "subject_user_id"
+  add_foreign_key "memory_access_logs", "users", column: "viewing_user_id"
+  add_foreign_key "memory_access_logs", "workspaces"
   add_foreign_key "memory_items", "agents"
   add_foreign_key "memory_items", "conversations"
   add_foreign_key "memory_items", "memory_items", column: "supersedes_id"

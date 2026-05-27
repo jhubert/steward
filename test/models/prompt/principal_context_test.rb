@@ -131,6 +131,36 @@ class Prompt::PrincipalContextTest < ActiveSupport::TestCase
     end
   end
 
+  test 'observation-category memories are excluded from cross-principal section' do
+    MemoryItem.create!(
+      workspace: workspaces(:default),
+      user: users(:bob),
+      agent: agents(:jennifer),
+      conversation: conversations(:bob_jennifer),
+      category: 'observation',
+      content: 'BOB_PRIVATE_OBSERVATION about emotional state'
+    )
+
+    conversation = conversations(:alice_jennifer)
+    result = Prompt::PrincipalContext.new(conversation).call
+
+    cross_principal_section = result.split('## Cross-Principal Context').last
+    assert_not_includes cross_principal_section, 'BOB_PRIVATE_OBSERVATION'
+  end
+
+  test 'cross-principal surfacing writes a MemoryAccessLog entry per fellow' do
+    conversation = conversations(:alice_jennifer)
+
+    assert_difference 'MemoryAccessLog.count', 1 do
+      Prompt::PrincipalContext.new(conversation).call
+    end
+
+    log = MemoryAccessLog.order(:created_at).last
+    assert_equal 'principal_context', log.context
+    assert_equal users(:alice).id, log.viewing_user_id
+    assert_equal users(:bob).id, log.subject_user_id
+  end
+
   test 'excludes current user own memories from cross-principal section' do
     conversation = conversations(:alice_jennifer)
     result = Prompt::PrincipalContext.new(conversation).call

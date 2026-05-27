@@ -1320,6 +1320,20 @@ class ProcessMessageJob < ApplicationJob
       break if chars_used + line.length > char_limit
       chars_used += line.length
       lines << line
+
+      # Audit: log when recall surfaces another principal's memory to the
+      # current speaker. Self-recall (own memories) is not logged.
+      if agent.principal_mode? && item.user_id != conversation.user_id
+        MemoryAccessLog.record(
+          workspace: conversation.workspace,
+          agent: agent,
+          viewing_user: conversation.user,
+          subject_user_id: item.user_id,
+          conversation: conversation,
+          context: "recall_tool",
+          memory_item_id: item.id
+        )
+      end
     end
 
     virtual_result("recall", "Found #{items.size} memor#{items.size == 1 ? 'y' : 'ies'}:\n#{lines.join("\n")}", input: query.truncate(200))

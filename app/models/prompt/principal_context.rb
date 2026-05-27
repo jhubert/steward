@@ -90,10 +90,18 @@ module Prompt
 
       fellows.each do |ap|
         name = ap.display_name.presence || ap.user.name.presence || "principal"
-        items = MemoryItem.current.where(user: ap.user, agent: @agent).order(created_at: :desc).limit(20)
+        # Observations are private to the user they were made about — never
+        # surface another principal's emotional/contextual observations to
+        # the current speaker.
+        items = MemoryItem.current
+                          .where(user: ap.user, agent: @agent)
+                          .where.not(category: 'observation')
+                          .order(created_at: :desc)
+                          .limit(20)
         next if items.empty?
 
         lines = []
+        surfaced_any = false
         items.each do |item|
           # Always-on provenance label — even with one fellow, the model must
           # be able to see whose memory it's drawing from before quoting it back.
@@ -101,9 +109,24 @@ module Prompt
           break if chars_used + line.length > char_limit
           chars_used += line.length
           lines << line
+          surfaced_any = true
         end
 
         next if lines.empty?
+
+        # Audit: record that this fellow's memories were surfaced to the
+        # current speaker in this conversation.
+        if surfaced_any
+          MemoryAccessLog.record(
+            workspace: @conversation.workspace,
+            agent: @agent,
+            viewing_user: @user,
+            subject_user: ap.user,
+            conversation: @conversation,
+            context: "principal_context"
+          )
+        end
+
         sections << "### #{ap.roster_entry}\n#{lines.join("\n")}"
       end
 

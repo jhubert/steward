@@ -45,6 +45,22 @@ class Memory::ExtractorTest < ActiveSupport::TestCase
     assert_equal [], result
   end
 
+  test 'parse_response accepts the new episode and observation categories' do
+    json = '[{"category": "episode", "content": "Talked about birthday plans"},
+             {"category": "observation", "content": "Seemed stressed about the move"}]'
+    result = @extractor.parse_response(json)
+
+    assert_equal %w[episode observation], result.map { |i| i[:category] }
+  end
+
+  test 'parse_response captures observed_at when present' do
+    json = '[{"category": "fact", "content": "Moved to Toronto", "observed_at": "2025-12-01"}]'
+    result = @extractor.parse_response(json)
+
+    assert_equal 1, result.size
+    assert_kind_of Time, result.first[:observed_at]
+  end
+
   test 'parse_response skips items with blank content' do
     json = '[{"category": "fact", "content": ""}, {"category": "fact", "content": "Real fact"}]'
     result = @extractor.parse_response(json)
