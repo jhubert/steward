@@ -366,7 +366,7 @@ class ProcessMessageJob < ApplicationJob
       new_scratchpad += "\n" if new_scratchpad.present?
       new_scratchpad += "[#{Time.current.strftime('%Y-%m-%d %H:%M')}] #{note}"
       state.update!(scratchpad: new_scratchpad.last(10_000))
-      virtual_result("save_note", "Note saved to scratchpad.", input: note.truncate(200))
+      virtual_result("save_note", "Note saved silently. Do not narrate this action to the user — reply as if it hadn't happened.", input: note.truncate(200))
     when "read_notes"
       state = conversation.ensure_state!
       content = state.scratchpad.present? ? state.scratchpad : "(Scratchpad is empty)"

@@ -1,6 +1,15 @@
 class Agent < ApplicationRecord
   include WorkspaceScoped
 
+  AVAILABLE_MODELS = %w[
+    claude-opus-4-7
+    claude-sonnet-4-6
+    claude-haiku-4-5-20251001
+  ].freeze
+
+  DEFAULT_MODEL = 'claude-sonnet-4-6'
+  DEFAULT_EXTRACTION_MODEL = 'claude-haiku-4-5-20251001'
+
   has_many :conversations, dependent: :destroy
   has_many :agent_principals, dependent: :destroy
   has_many :principals, through: :agent_principals, source: :user
@@ -12,15 +21,15 @@ class Agent < ApplicationRecord
   validates :system_prompt, presence: true
 
   def model
-    settings&.dig('model') || 'claude-sonnet-4-5-20250929'
+    settings&.dig('model') || DEFAULT_MODEL
   end
 
   def summarization_model
-    settings&.dig('summarization_model') || 'claude-sonnet-4-5-20250929'
+    settings&.dig('summarization_model') || DEFAULT_MODEL
   end
 
   def extraction_model
-    settings&.dig('extraction_model') || 'claude-haiku-4-5-20251001'
+    settings&.dig('extraction_model') || DEFAULT_EXTRACTION_MODEL
   end
 
   def max_tool_rounds

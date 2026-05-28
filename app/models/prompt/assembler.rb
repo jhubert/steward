@@ -501,15 +501,20 @@ module Prompt
 
         content = msg.content_blocks_for_api
 
-        local_time = msg.created_at.in_time_zone(tz)
-        current_date = local_time.to_date
-        timestamp = if current_date != prev_date
-                      local_time.strftime('%a %b %-d, %-I:%M %p %Z')
-                    else
-                      local_time.strftime('%-I:%M %p %Z')
-                    end
-        prev_date = current_date
-        content = prepend_prefix(content, "[#{timestamp}] ")
+        # Only prefix timestamps on user messages — assistant replies sent to
+        # the user shouldn't include them, and seeing its own timestamped
+        # replies in history caused the model to mimic the format.
+        if msg.role == 'user'
+          local_time = msg.created_at.in_time_zone(tz)
+          current_date = local_time.to_date
+          timestamp = if current_date != prev_date
+                        local_time.strftime('%a %b %-d, %-I:%M %p %Z')
+                      else
+                        local_time.strftime('%-I:%M %p %Z')
+                      end
+          prev_date = current_date
+          content = prepend_prefix(content, "[#{timestamp}] ")
+        end
 
         # In multi-party email threads, label user messages with sender info
         if multi_party_email && msg.role == 'user'

@@ -20,8 +20,12 @@
   <div class="form-group">
     <label for="agent_model">Model</label>
     <select name="agent[model]" id="agent_model">
-      <% %w[claude-sonnet-4-5-20250929 claude-haiku-4-5-20251001 claude-opus-4-6].each do |m| %>
-        <option value="<%= m %>" <%= "selected" if @agent.model == m %>><%= m %></option>
+      <% models = Agent::AVAILABLE_MODELS.dup %>
+      <% models << @agent.model if @agent.model.present? && !models.include?(@agent.model) %>
+      <% models.each do |m| %>
+        <option value="<%= m %>" <%= "selected" if @agent.model == m %>>
+          <%= m %><%= " (legacy)" unless Agent::AVAILABLE_MODELS.include?(m) %>
+        </option>
       <% end %>
     </select>
   </div>
