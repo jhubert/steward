@@ -11,6 +11,20 @@ module Adapters
     end
 
     def normalize(raw_params)
+      # Inline-keyboard taps arrive as callback_query updates, not messages.
+      # Returning :callback_query lets the controller route them separately.
+      if (cb = raw_params['callback_query'])
+        return {
+          kind: :callback_query,
+          callback_query_id: cb['id'],
+          callback_data: cb['data'],
+          chat_id: cb.dig('message', 'chat', 'id')&.to_s,
+          message_id: cb.dig('message', 'message_id'),
+          from_telegram_id: cb.dig('from', 'id')&.to_s,
+          from_name: [cb.dig('from', 'first_name'), cb.dig('from', 'last_name')].compact.join(' ')
+        }
+      end
+
       message = raw_params.dig('message') || raw_params.dig('edited_message')
       return nil unless message
 
@@ -62,6 +76,47 @@ module Adapters
       end
 
       response
+    end
+
+    # Send a message with an inline keyboard. `buttons` is an array of rows;
+    # each row is an array of { text:, callback_data: } hashes. Returns the
+    # parsed Telegram response (so the caller can record the message_id).
+    def send_text_with_keyboard(chat_id, text, buttons)
+      keyboard = { inline_keyboard: buttons }
+      response = HTTPX.post(
+        "#{API_BASE}/bot#{@bot_token}/sendMessage",
+        json: { chat_id: chat_id, text: text, parse_mode: 'Markdown', reply_markup: keyboard }
+      )
+
+      if response.status != 200
+        Rails.logger.warn("[Telegram] keyboard Markdown failed, retrying as plain text: #{response.body}")
+        response = HTTPX.post(
+          "#{API_BASE}/bot#{@bot_token}/sendMessage",
+          json: { chat_id: chat_id, text: text, reply_markup: keyboard }
+        )
+      end
+
+      if response.status != 200
+        raise Adapters::DeliveryError, "Telegram sendMessage failed (#{response.status}): #{response.body}"
+      end
+
+      JSON.parse(response.body.to_s) rescue {}
+    end
+
+    # Acknowledge a callback query so the spinner on the user's tap clears.
+    def answer_callback_query(callback_query_id, text: nil)
+      payload = { callback_query_id: callback_query_id }
+      payload[:text] = text if text
+      HTTPX.post("#{API_BASE}/bot#{@bot_token}/answerCallbackQuery", json: payload)
+    end
+
+    # Strip the inline keyboard off a previously-sent approval message —
+    # used after the action is resolved so the buttons can't be tapped again.
+    def edit_message_text(chat_id, message_id, new_text)
+      HTTPX.post(
+        "#{API_BASE}/bot#{@bot_token}/editMessageText",
+        json: { chat_id: chat_id, message_id: message_id, text: new_text, parse_mode: 'Markdown' }
+      )
     end
 
     def send_text(chat_id, text)

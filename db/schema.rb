@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_27_074829) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_07_185211) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -239,6 +239,34 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_074829) do
     t.index ["workspace_id"], name: "index_pairing_codes_on_workspace_id"
   end
 
+  create_table "pending_actions", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.string "approval_chat_id"
+    t.bigint "approval_message_id"
+    t.bigint "approver_user_id", null: false
+    t.bigint "conversation_id", null: false
+    t.datetime "created_at", null: false
+    t.text "error"
+    t.datetime "expires_at"
+    t.text "reject_note"
+    t.datetime "resolved_at"
+    t.text "result_summary"
+    t.bigint "source_message_id"
+    t.string "status", default: "pending", null: false
+    t.jsonb "tool_input", default: {}, null: false
+    t.string "tool_name", null: false
+    t.string "tool_use_id"
+    t.datetime "updated_at", null: false
+    t.bigint "workspace_id", null: false
+    t.index ["agent_id", "status"], name: "index_pending_actions_on_agent_id_and_status"
+    t.index ["agent_id"], name: "index_pending_actions_on_agent_id"
+    t.index ["approver_user_id"], name: "index_pending_actions_on_approver_user_id"
+    t.index ["conversation_id"], name: "index_pending_actions_on_conversation_id"
+    t.index ["source_message_id"], name: "index_pending_actions_on_source_message_id"
+    t.index ["status"], name: "index_pending_actions_on_status"
+    t.index ["workspace_id"], name: "index_pending_actions_on_workspace_id"
+  end
+
   create_table "scheduled_tasks", force: :cascade do |t|
     t.bigint "agent_id", null: false
     t.bigint "agent_tool_id"
@@ -464,6 +492,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_27_074829) do
   add_foreign_key "pairing_codes", "users", column: "created_by_id"
   add_foreign_key "pairing_codes", "users", column: "redeemed_by_id"
   add_foreign_key "pairing_codes", "workspaces"
+  add_foreign_key "pending_actions", "agents"
+  add_foreign_key "pending_actions", "conversations"
+  add_foreign_key "pending_actions", "messages", column: "source_message_id"
+  add_foreign_key "pending_actions", "users", column: "approver_user_id"
+  add_foreign_key "pending_actions", "workspaces"
   add_foreign_key "scheduled_tasks", "agent_tools"
   add_foreign_key "scheduled_tasks", "agents"
   add_foreign_key "scheduled_tasks", "conversations"

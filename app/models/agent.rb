@@ -16,6 +16,7 @@ class Agent < ApplicationRecord
   has_many :agent_tools, dependent: :destroy
   has_many :scheduled_tasks, dependent: :destroy
   has_many :pairing_codes, dependent: :destroy
+  has_many :pending_actions, dependent: :destroy
 
   validates :name, presence: true
   validates :system_prompt, presence: true
@@ -128,6 +129,34 @@ class Agent < ApplicationRecord
 
   def memory_sharing?
     settings&.dig('memory_sharing') == true
+  end
+
+  # Names of tools (virtual or agent_tool) that must be approved before execution.
+  # Configured via agent.settings["approval_required_tools"] = ["send_email", ...].
+  def approval_required_tools
+    Array(settings&.dig('approval_required_tools')).map(&:to_s)
+  end
+
+  def approval_required?(tool_name)
+    approval_required_tools.include?(tool_name.to_s)
+  end
+
+  # The user who approves outbound actions. Configurable via
+  # agent.settings["approval_approver_user_id"]; falls back to the first principal.
+  def approver_user
+    explicit_id = settings&.dig('approval_approver_user_id')
+    return User.find_by(id: explicit_id) if explicit_id
+    agent_principals.order(:created_at).first&.user
+  end
+
+  # Returns the conversation we'd use to send an approval ping to the approver.
+  # v1: must be an existing Telegram thread between the approver and this agent.
+  def approval_conversation_for(user)
+    return nil unless user
+    Conversation.unscoped
+                .where(agent_id: id, user_id: user.id, channel: "telegram")
+                .order(updated_at: :desc)
+                .first
   end
 
   def email_handle

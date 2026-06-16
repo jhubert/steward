@@ -14,6 +14,14 @@ class WebhooksController < ActionController::API
     adapter = Adapters::Telegram.new(bot_token: agent.telegram_bot_token)
     normalized = adapter.normalize(params.to_unsafe_h)
 
+    # Inline-keyboard taps (approval Send/Reject buttons) arrive as
+    # callback_query updates on the same webhook URL.
+    if normalized && normalized[:kind] == :callback_query
+      handle_telegram_callback(agent, adapter, normalized)
+      head :ok
+      return
+    end
+
     has_media = normalized&.dig(:raw_message).present?
 
     if normalized.nil? || (normalized[:content].blank? && !has_media)
@@ -270,6 +278,44 @@ class WebhooksController < ActionController::API
   end
 
   private
+
+  def handle_telegram_callback(agent, adapter, normalized)
+    parsed = PendingAction.parse_callback(normalized[:callback_data])
+    unless parsed
+      adapter.answer_callback_query(normalized[:callback_query_id], text: "Unrecognized action.")
+      return
+    end
+
+    pending = PendingAction.unscoped.find_by(id: parsed[:id], agent_id: agent.id)
+    unless pending
+      adapter.answer_callback_query(normalized[:callback_query_id], text: "Action not found.")
+      return
+    end
+
+    # Approver identity check: the tapper must be the configured approver. We
+    # match on Telegram chat id via the approver's User.external_ids.
+    approver = pending.approver_user
+    tapper_chat_id = normalized[:from_telegram_id]
+    approver_chat_id = approver&.external_ids&.dig("telegram_chat_id")
+    unless tapper_chat_id.present? && approver_chat_id.present? && tapper_chat_id == approver_chat_id
+      adapter.answer_callback_query(normalized[:callback_query_id], text: "Not authorized.")
+      return
+    end
+
+    if pending.resolved?
+      adapter.answer_callback_query(normalized[:callback_query_id], text: "Already #{pending.status}.")
+      return
+    end
+
+    decision = parsed[:decision]
+    unless %w[approve reject].include?(decision)
+      adapter.answer_callback_query(normalized[:callback_query_id], text: "Unknown decision.")
+      return
+    end
+
+    adapter.answer_callback_query(normalized[:callback_query_id], text: decision == "approve" ? "Sending…" : "Rejected.")
+    ResolvePendingActionJob.perform_later(pending.id, decision: decision)
+  end
 
   def serialize_attachment(attachment)
     {

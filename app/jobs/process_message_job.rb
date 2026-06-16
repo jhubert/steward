@@ -269,6 +269,18 @@ class ProcessMessageJob < ApplicationJob
     )
   end
 
+  # Executes a previously-queued tool call (skipping the approval gate) and
+  # returns the tool_result hash. Called by ResolvePendingActionJob on approve.
+  def self.execute_pending_action!(pending_action)
+    Current.workspace = pending_action.workspace
+    shim = ToolUseShim.new(
+      id: pending_action.tool_use_id || "pa-#{pending_action.id}",
+      name: pending_action.tool_name,
+      input: pending_action.tool_input || {}
+    )
+    new.send(:execute_tool, shim, pending_action.agent, pending_action.conversation, bypass_approval: true)
+  end
+
   def self.notify_failure(message_id, error)
     message = Message.find_by(id: message_id)
     return unless message
@@ -306,8 +318,17 @@ class ProcessMessageJob < ApplicationJob
     end
   end
 
-  def execute_tool(tool_use_block, agent, conversation)
+  ToolUseShim = Data.define(:id, :name, :input)
+
+  def execute_tool(tool_use_block, agent, conversation, bypass_approval: false)
     input = tool_use_block.input.is_a?(Hash) ? tool_use_block.input.transform_keys(&:to_s) : {}
+
+    # Approval gate: if this tool is on the agent's approval list, queue it
+    # instead of executing and tell the model the action is pending.
+    if !bypass_approval && agent.approval_required?(tool_use_block.name)
+      gated = queue_for_approval(tool_use_block, input, agent, conversation)
+      return gated if gated
+    end
 
     # Handle virtual (built-in) tools
     virtual_result = execute_virtual_tool(tool_use_block.name, input, conversation)
@@ -1588,6 +1609,49 @@ class ProcessMessageJob < ApplicationJob
     else
       question
     end
+  end
+
+  # Persist a PendingAction and notify the approver via Telegram. Returns the
+  # tool_result hash to feed back to the LLM, or nil if the approver isn't
+  # configured (in which case we fall through to normal execution rather than
+  # silently dropping the action).
+  def queue_for_approval(tool_use_block, input, agent, conversation)
+    approver = agent.approver_user
+    unless approver
+      Rails.logger.warn("[Approvals] Tool #{tool_use_block.name} flagged for approval but agent #{agent.id} has no approver; executing normally")
+      return nil
+    end
+
+    source_message = conversation.messages.where(role: "user").order(:id).last
+
+    pending = PendingAction.create!(
+      workspace: conversation.workspace,
+      agent: agent,
+      conversation: conversation,
+      approver_user: approver,
+      source_message: source_message,
+      tool_name: tool_use_block.name,
+      tool_input: input,
+      tool_use_id: tool_use_block.id,
+      status: "pending"
+    )
+
+    delivered = Approvals::TelegramPrompt.deliver(pending)
+    approver_label = approver.name.presence || "the approver"
+    content = if delivered
+      "queued_for_approval: pending_action_id=#{pending.id}. The action has NOT been performed. " \
+      "#{approver_label} has been pinged on Telegram to approve or reject. " \
+      "End your turn — do not call this tool again, do not promise the user a specific timeline, " \
+      "and do not narrate this internal step. You'll be re-invoked when the approval is resolved."
+    else
+      "queued_for_approval: pending_action_id=#{pending.id} (delivery FAILED). The action is queued but the Telegram ping could not be sent. End your turn."
+    end
+
+    {
+      content: content,
+      summary: { name: tool_use_block.name, queued_for_approval: pending.id },
+      log_entry: { "tool" => tool_use_block.name, "queued_for_approval" => pending.id, "input" => input.to_s.truncate(200) }
+    }
   end
 
   def virtual_result(tool_name, content, input: nil)
