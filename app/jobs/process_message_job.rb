@@ -1094,8 +1094,16 @@ class ProcessMessageJob < ApplicationJob
     )
   end
 
+  # Block-level tags that indicate the body is already HTML. If we see any of
+  # these, the model produced markup directly and we must NOT html_escape it —
+  # otherwise the recipient sees literal "&lt;p&gt;Hi&lt;/p&gt;".
+  HTML_BODY_PATTERN = /<\s*(p|br|div|span|strong|em|a|ul|ol|li|h[1-6]|code|pre|blockquote|table|tr|td|hr)\b/i
+
   def plain_text_to_html(text)
-    escaped = ERB::Util.html_escape(text)
+    s = text.to_s
+    return s if s.match?(HTML_BODY_PATTERN)
+
+    escaped = ERB::Util.html_escape(s)
     paragraphs = escaped.split(/\n{2,}/)
     paragraphs.map { |p| "<p>#{p.gsub("\n", "<br>")}</p>" }.join
   end
