@@ -73,6 +73,45 @@ class ProcessMessageJobApprovalTest < ActiveSupport::TestCase
     end
   end
 
+  test "all-principal recipients bypass the approval gate" do
+    # bob is also a principal of jennifer; this is an internal-only email
+    tool_use = build_tool_use_response(
+      tool_name: "send_email",
+      tool_id: "toolu_internal_1",
+      input: { "to" => "alice@example.com", "cc" => "bob@example.com", "subject" => "FYI", "body" => "ok" }
+    )
+    text_resp = build_text_response("Sent.")
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use).then.returns(text_resp)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    # Stub the actual email send so it doesn't try to hit Postmark/Gmail.
+    ProcessMessageJob.any_instance.stubs(:execute_virtual_tool).returns(
+      { content: "Email sent.", summary: { name: "send_email" }, log_entry: {} }
+    )
+
+    assert_no_difference "PendingAction.count" do
+      ProcessMessageJob.perform_now(@message.id)
+    end
+  end
+
+  test "mixed recipients (one non-principal) still fire the gate" do
+    Approvals::TelegramPrompt.stubs(:deliver).returns(true)
+    tool_use = build_tool_use_response(
+      tool_name: "send_email",
+      tool_id: "toolu_mixed_1",
+      input: { "to" => "alice@example.com", "cc" => "prospect@acme.com", "subject" => "X", "body" => "y" }
+    )
+    text_resp = build_text_response("Queued.")
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use).then.returns(text_resp)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    assert_difference "PendingAction.count", 1 do
+      ProcessMessageJob.perform_now(@message.id)
+    end
+  end
+
   test "execute_pending_action! bypasses the gate and runs the virtual tool" do
     Approvals::TelegramPrompt.stubs(:deliver).returns(true)
 

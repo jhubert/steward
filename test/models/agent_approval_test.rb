@@ -40,4 +40,32 @@ class AgentApprovalTest < ActiveSupport::TestCase
     # bob has no telegram conversation with markus in fixtures
     assert_nil markus.approval_conversation_for(bob)
   end
+
+  test "auto_approve? is true when every send_email recipient is a principal" do
+    # alice@example.com and bob@example.com are both principals of jennifer
+    assert @agent.auto_approve?("send_email", { "to" => "alice@example.com", "cc" => "bob@example.com" })
+    assert @agent.auto_approve?("send_email", { "to" => "Alice <ALICE@example.com>" })
+    assert @agent.auto_approve?("gmail_new_thread", { "to" => "alice@example.com" })
+  end
+
+  test "auto_approve? is false when any recipient is not a principal" do
+    refute @agent.auto_approve?("send_email", { "to" => "prospect@acme.com" })
+    refute @agent.auto_approve?("send_email", { "to" => "alice@example.com", "cc" => "prospect@acme.com" })
+  end
+
+  test "auto_approve? is false for empty recipient list" do
+    refute @agent.auto_approve?("send_email", { "to" => "", "cc" => "" })
+    refute @agent.auto_approve?("send_email", {})
+  end
+
+  test "auto_approve? is false for tools that aren't recipient-aware (e.g. gmail_reply)" do
+    refute @agent.auto_approve?("gmail_reply", { "thread_id" => "abc", "body" => "ok" })
+    refute @agent.auto_approve?("recall", { "query" => "foo" })
+  end
+
+  test "principal_email_set includes external_ids email aliases" do
+    alice = users(:alice)
+    alice.update!(external_ids: alice.external_ids.merge("emails" => ["alice@example.com", "alice@oldjob.com"]))
+    assert_includes @agent.principal_email_set, "alice@oldjob.com"
+  end
 end

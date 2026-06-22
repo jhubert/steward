@@ -324,8 +324,10 @@ class ProcessMessageJob < ApplicationJob
     input = tool_use_block.input.is_a?(Hash) ? tool_use_block.input.transform_keys(&:to_s) : {}
 
     # Approval gate: if this tool is on the agent's approval list, queue it
-    # instead of executing and tell the model the action is pending.
-    if !bypass_approval && agent.approval_required?(tool_use_block.name)
+    # instead of executing and tell the model the action is pending. Skipped
+    # when the action is purely internal (e.g. an email to principals only).
+    if !bypass_approval && agent.approval_required?(tool_use_block.name) &&
+       !agent.auto_approve?(tool_use_block.name, input)
       gated = queue_for_approval(tool_use_block, input, agent, conversation)
       return gated if gated
     end

@@ -141,6 +141,44 @@ class Agent < ApplicationRecord
     approval_required_tools.include?(tool_name.to_s)
   end
 
+  # Returns true when an otherwise-approval-required call can be auto-executed
+  # because the action is purely internal — e.g. an email whose entire To+CC
+  # list is principals of this agent. Saves the approver from rubber-stamping
+  # emails they themselves are receiving.
+  def auto_approve?(tool_name, input)
+    case tool_name.to_s
+    when "send_email", "gmail_new_thread"
+      recipients = email_addresses_from(input)
+      return false if recipients.empty?
+      principal_emails = principal_email_set
+      recipients.all? { |addr| principal_emails.include?(addr) }
+    else
+      false
+    end
+  end
+
+  # Lowercased email addresses for every principal (including any aliases
+  # tracked in external_ids["emails"]).
+  def principal_email_set
+    Set.new.tap do |set|
+      agent_principals.includes(:user).each do |ap|
+        u = ap.user
+        set << u.email.to_s.downcase if u.email.present?
+        Array(u.external_ids&.dig("emails")).each { |e| set << e.to_s.downcase }
+      end
+    end
+  end
+
+  # Extracts lowercased email addresses from a send_email-shaped input hash.
+  # Accepts comma-separated strings and "Name <addr>" forms in either field.
+  def email_addresses_from(input)
+    raw = "#{input['to']},#{input['cc']}"
+    raw.split(",").filter_map do |part|
+      addr = part.to_s.sub(/.*<([^>]+)>.*/, '\1').strip.downcase
+      addr.presence
+    end
+  end
+
   # The user who approves outbound actions. Configurable via
   # agent.settings["approval_approver_user_id"]; falls back to the first principal.
   def approver_user
