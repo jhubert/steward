@@ -142,18 +142,42 @@ class Agent < ApplicationRecord
   end
 
   # Returns true when an otherwise-approval-required call can be auto-executed
-  # because the action is purely internal — e.g. an email whose entire To+CC
-  # list is principals of this agent. Saves the approver from rubber-stamping
+  # because the action is purely internal — e.g. an email whose entire recipient
+  # set is principals of this agent. Saves the approver from rubber-stamping
   # emails they themselves are receiving.
   def auto_approve?(tool_name, input)
-    case tool_name.to_s
-    when "send_email", "gmail_new_thread"
-      recipients = email_addresses_from(input)
-      return false if recipients.empty?
-      principal_emails = principal_email_set
-      recipients.all? { |addr| principal_emails.include?(addr) }
-    else
-      false
+    recipients = case tool_name.to_s
+                 when "send_email", "gmail_new_thread"
+                   email_addresses_from(input)
+                 when "gmail_reply"
+                   reply_recipients_for(input)
+                 else
+                   return false
+                 end
+    return false if recipients.empty?
+    recipients.all? { |addr| principal_email_set.include?(addr) }
+  end
+
+  # For gmail_reply: derive the thread's other-party emails from our own DB.
+  # `--reply-all` sends to every participant except the agent itself, so the
+  # gate-relevant set is "participants minus self".
+  def reply_recipients_for(input)
+    thread_id = input["thread_id"].to_s.strip
+    return [] if thread_id.blank?
+
+    conv = Conversation.unscoped.find_by(
+      workspace_id: workspace_id,
+      agent_id: id,
+      channel: "email",
+      external_thread_key: "gmail:#{thread_id}"
+    )
+    return [] unless conv
+
+    own = settings&.dig("gog_email").to_s.downcase
+    Array(conv.metadata&.dig("email_participants")).filter_map do |p|
+      email = p["email"].to_s.downcase
+      next if email.blank? || email == own
+      email
     end
   end
 

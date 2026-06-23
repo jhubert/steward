@@ -58,9 +58,62 @@ class AgentApprovalTest < ActiveSupport::TestCase
     refute @agent.auto_approve?("send_email", {})
   end
 
-  test "auto_approve? is false for tools that aren't recipient-aware (e.g. gmail_reply)" do
-    refute @agent.auto_approve?("gmail_reply", { "thread_id" => "abc", "body" => "ok" })
+  test "auto_approve? is false for unrelated tools" do
     refute @agent.auto_approve?("recall", { "query" => "foo" })
+  end
+
+  test "auto_approve? for gmail_reply when every thread participant is a principal" do
+    # Build a GOG-keyed email conversation whose participants are all principals
+    @agent.update!(settings: @agent.settings.merge("gog_email" => "jennifer@boardwise.co"))
+    conv = Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: @agent,
+      channel: "email",
+      external_thread_key: "gmail:THREAD_INTERNAL"
+    )
+    conv.update!(metadata: {
+      "email_participants" => [
+        { "email" => "alice@example.com", "name" => "Alice" },
+        { "email" => "bob@example.com",   "name" => "Bob" },
+        { "email" => "jennifer@boardwise.co", "name" => "Jennifer" } # self — filtered out
+      ]
+    })
+
+    assert @agent.auto_approve?("gmail_reply", { "thread_id" => "THREAD_INTERNAL", "body" => "ok" })
+  end
+
+  test "auto_approve? for gmail_reply is false when any participant is external" do
+    conv = Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: @agent,
+      channel: "email",
+      external_thread_key: "gmail:THREAD_MIXED"
+    )
+    conv.update!(metadata: {
+      "email_participants" => [
+        { "email" => "alice@example.com", "name" => "Alice" },
+        { "email" => "prospect@acme.com", "name" => "Prospect" }
+      ]
+    })
+
+    refute @agent.auto_approve?("gmail_reply", { "thread_id" => "THREAD_MIXED", "body" => "ok" })
+  end
+
+  test "auto_approve? for gmail_reply is false when we can't find the thread (safe default)" do
+    refute @agent.auto_approve?("gmail_reply", { "thread_id" => "UNKNOWN", "body" => "ok" })
+  end
+
+  test "auto_approve? for gmail_reply is false when participants are missing (safe default)" do
+    Conversation.create!(
+      workspace: workspaces(:default),
+      user: users(:alice),
+      agent: @agent,
+      channel: "email",
+      external_thread_key: "gmail:THREAD_NO_PARTICIPANTS"
+    )
+    refute @agent.auto_approve?("gmail_reply", { "thread_id" => "THREAD_NO_PARTICIPANTS", "body" => "ok" })
   end
 
   test "principal_email_set includes external_ids email aliases" do
