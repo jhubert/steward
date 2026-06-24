@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_07_185211) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_24_033250) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -494,7 +494,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_07_185211) do
   add_foreign_key "pairing_codes", "workspaces"
   add_foreign_key "pending_actions", "agents"
   add_foreign_key "pending_actions", "conversations"
-  add_foreign_key "pending_actions", "messages", column: "source_message_id"
+  add_foreign_key "pending_actions", "messages", column: "source_message_id", on_delete: :nullify
   add_foreign_key "pending_actions", "users", column: "approver_user_id"
   add_foreign_key "pending_actions", "workspaces"
   add_foreign_key "scheduled_tasks", "agent_tools"

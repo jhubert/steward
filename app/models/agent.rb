@@ -141,44 +141,14 @@ class Agent < ApplicationRecord
     approval_required_tools.include?(tool_name.to_s)
   end
 
-  # Returns true when an otherwise-approval-required call can be auto-executed
-  # because the action is purely internal — e.g. an email whose entire recipient
-  # set is principals of this agent. Saves the approver from rubber-stamping
-  # emails they themselves are receiving.
-  def auto_approve?(tool_name, input)
-    recipients = case tool_name.to_s
-                 when "send_email", "gmail_new_thread"
-                   email_addresses_from(input)
-                 when "gmail_reply"
-                   reply_recipients_for(input)
-                 else
-                   return false
-                 end
-    return false if recipients.empty?
-    recipients.all? { |addr| principal_email_set.include?(addr) }
-  end
-
-  # For gmail_reply: derive the thread's other-party emails from our own DB.
-  # `--reply-all` sends to every participant except the agent itself, so the
-  # gate-relevant set is "participants minus self".
-  def reply_recipients_for(input)
-    thread_id = input["thread_id"].to_s.strip
-    return [] if thread_id.blank?
-
-    conv = Conversation.unscoped.find_by(
-      workspace_id: workspace_id,
-      agent_id: id,
-      channel: "email",
-      external_thread_key: "gmail:#{thread_id}"
-    )
-    return [] unless conv
-
-    own = settings&.dig("gog_email").to_s.downcase
-    Array(conv.metadata&.dig("email_participants")).filter_map do |p|
-      email = p["email"].to_s.downcase
-      next if email.blank? || email == own
-      email
-    end
+  # Returns true when every recipient is a principal of this agent — used by
+  # the prepare-first gate to auto-execute purely-internal email actions.
+  # Recipients must be pre-resolved lowercase addresses (the gate's prepare
+  # phase produces these from the tool input + Gmail thread fetch).
+  def auto_approve_recipients?(recipients)
+    return false if recipients.blank?
+    set = principal_email_set
+    recipients.all? { |addr| set.include?(addr.to_s.downcase) }
   end
 
   # Lowercased email addresses for every principal (including any aliases
@@ -190,16 +160,6 @@ class Agent < ApplicationRecord
         set << u.email.to_s.downcase if u.email.present?
         Array(u.external_ids&.dig("emails")).each { |e| set << e.to_s.downcase }
       end
-    end
-  end
-
-  # Extracts lowercased email addresses from a send_email-shaped input hash.
-  # Accepts comma-separated strings and "Name <addr>" forms in either field.
-  def email_addresses_from(input)
-    raw = "#{input['to']},#{input['cc']}"
-    raw.split(",").filter_map do |part|
-      addr = part.to_s.sub(/.*<([^>]+)>.*/, '\1').strip.downcase
-      addr.presence
     end
   end
 

@@ -271,14 +271,25 @@ class ProcessMessageJob < ApplicationJob
 
   # Executes a previously-queued tool call (skipping the approval gate) and
   # returns the tool_result hash. Called by ResolvePendingActionJob on approve.
+  # For email tools, the stored tool_input IS the prepared payload — send it
+  # directly without re-running validation/QuoteBack/Allowlist (which already
+  # passed pre-approval; re-running risks racing with thread state changes).
   def self.execute_pending_action!(pending_action)
     Current.workspace = pending_action.workspace
-    shim = ToolUseShim.new(
-      id: pending_action.tool_use_id || "pa-#{pending_action.id}",
-      name: pending_action.tool_name,
-      input: pending_action.tool_input || {}
-    )
-    new.send(:execute_tool, shim, pending_action.agent, pending_action.conversation, bypass_approval: true)
+    payload = pending_action.tool_input || {}
+    name = pending_action.tool_name
+
+    instance = new
+    if instance.send(:email_approval_tool?, name)
+      instance.send(:send_email_action, name, payload, pending_action.agent, pending_action.conversation)
+    else
+      shim = ToolUseShim.new(
+        id: pending_action.tool_use_id || "pa-#{pending_action.id}",
+        name: name,
+        input: payload
+      )
+      instance.send(:execute_tool, shim, pending_action.agent, pending_action.conversation, bypass_approval: true)
+    end
   end
 
   def self.notify_failure(message_id, error)
@@ -322,18 +333,30 @@ class ProcessMessageJob < ApplicationJob
 
   def execute_tool(tool_use_block, agent, conversation, bypass_approval: false)
     input = tool_use_block.input.is_a?(Hash) ? tool_use_block.input.transform_keys(&:to_s) : {}
+    name = tool_use_block.name
 
-    # Approval gate: if this tool is on the agent's approval list, queue it
-    # instead of executing and tell the model the action is pending. Skipped
-    # when the action is purely internal (e.g. an email to principals only).
-    if !bypass_approval && agent.approval_required?(tool_use_block.name) &&
-       !agent.auto_approve?(tool_use_block.name, input)
-      gated = queue_for_approval(tool_use_block, input, agent, conversation)
+    # Prepare-first approval gate for email tools: run validation + recipient
+    # resolution BEFORE asking the human, so a pre-flight failure goes back to
+    # the model and we never queue something that would fail post-approval.
+    if !bypass_approval && agent.approval_required?(name) && email_approval_tool?(name)
+      prep = prepare_email_action(name, input, agent, conversation)
+      unless prep[:ok]
+        return prepare_failure_result(name, prep[:error], input)
+      end
+
+      if agent.auto_approve_recipients?(prep[:recipients])
+        return send_email_action(name, prep[:payload], agent, conversation)
+      end
+
+      gated = queue_for_approval(tool_use_block, prep[:payload], agent, conversation, recipients: prep[:recipients])
       return gated if gated
+
+      # No approver configured — fall through and send with the prepared payload.
+      return send_email_action(name, prep[:payload], agent, conversation)
     end
 
     # Handle virtual (built-in) tools
-    virtual_result = execute_virtual_tool(tool_use_block.name, input, conversation)
+    virtual_result = execute_virtual_tool(name, input, conversation)
     return virtual_result if virtual_result
 
     agent_tool = agent.enabled_tools.find_by(name: tool_use_block.name)
@@ -693,30 +716,62 @@ class ProcessMessageJob < ApplicationJob
   end
 
   def execute_gmail_reply(input, conversation)
+    agent = conversation.agent
+    prep = prepare_gmail_reply(input, agent, conversation)
+    unless prep[:ok]
+      return virtual_result("gmail_reply", prep[:error], input: "thread_id=#{input['thread_id']}")
+    end
+    send_gmail_reply(prep[:payload], agent, conversation)
+  end
+
+  # Pure validation + recipient resolution for gmail_reply. No side effects.
+  # Returns { ok: true, payload:, recipients: } or { ok: false, error: }.
+  # The payload is canonical — fed straight to send_gmail_reply later.
+  def prepare_gmail_reply(input, agent, conversation)
     thread_id = input["thread_id"].to_s.strip
     body = input["body"].to_s
     include_quote = input.fetch("include_quote", true)
 
-    agent = conversation.agent
     gog_env = agent.own_gog_env
-    return virtual_result("gmail_reply", "Error: Agent does not have GOG configured.") unless gog_env
-    return virtual_result("gmail_reply", "Error: 'thread_id' is required.") if thread_id.empty?
-    return virtual_result("gmail_reply", "Error: 'body' is required.") if body.strip.empty?
+    return { ok: false, error: "Error: Agent does not have GOG configured." } unless gog_env
+    return { ok: false, error: "Error: 'thread_id' is required." } if thread_id.empty?
+    return { ok: false, error: "Error: 'body' is required." } if body.strip.empty?
 
     latest = fetch_latest_inbound(gog_env, thread_id)
-    return virtual_result("gmail_reply", "Error: Could not fetch thread #{thread_id}: #{latest[:error]}", input: "thread_id=#{thread_id}") if latest[:error]
-    return virtual_result("gmail_reply", "Error: Thread has no inbound message to reply to (all messages are from you).", input: "thread_id=#{thread_id}") unless latest[:message]
+    return { ok: false, error: "Error: Could not fetch thread #{thread_id}: #{latest[:error]}" } if latest[:error]
+    return { ok: false, error: "Error: Thread has no inbound message to reply to (all messages are from you)." } unless latest[:message]
 
     qb = Tools::EmailGate::QuoteBack.new.call(inbound_body: latest[:body], draft_body: body)
-    unless qb.ok?
-      return virtual_result(
-        "gmail_reply",
-        "Error: Reply rejected — #{qb.reason}",
-        input: "thread_id=#{thread_id}"
-      )
-    end
+    return { ok: false, error: "Error: Reply rejected — #{qb.reason}" } unless qb.ok?
 
     subject = derive_reply_subject(latest[:subject])
+    to = latest[:from_email]
+    cc = latest[:cc]
+
+    {
+      ok: true,
+      recipients: recipients_from(to, cc),
+      payload: {
+        "thread_id" => thread_id,
+        "body" => body,
+        "include_quote" => include_quote,
+        "subject" => subject,
+        "to" => to,
+        "cc" => cc
+      }
+    }
+  end
+
+  def send_gmail_reply(payload, agent, conversation)
+    gog_env = agent.own_gog_env
+    return virtual_result("gmail_reply", "Error: Agent does not have GOG configured.") unless gog_env
+
+    thread_id = payload["thread_id"]
+    body      = payload["body"]
+    subject   = payload["subject"]
+    to        = payload["to"]
+    cc        = payload["cc"]
+    include_quote = payload.fetch("include_quote", true)
 
     argv = ["/usr/local/bin/gog", "gmail", "send",
             "--thread-id", thread_id,
@@ -736,11 +791,11 @@ class ProcessMessageJob < ApplicationJob
       gmail_message_id = response["id"]
       gmail_thread_id = response["threadId"] || thread_id
 
-      persist_email_send(agent, conversation, gmail_thread_id:, gmail_message_id:, subject:, to_header: latest[:from_email], cc_header: latest[:cc], body:, reply: true)
+      persist_email_send(agent, conversation, gmail_thread_id:, gmail_message_id:, subject:, to_header: to, cc_header: cc, body:, reply: true)
 
       virtual_result(
         "gmail_reply",
-        "Reply sent in thread #{gmail_thread_id}. Recipients were auto-derived (reply-all): To=#{latest[:from_email]}#{latest[:cc].present? ? ", Cc=#{latest[:cc]}" : ''}. Subject: #{subject}.",
+        "Reply sent in thread #{gmail_thread_id}. Recipients were auto-derived (reply-all): To=#{to}#{cc.present? ? ", Cc=#{cc}" : ''}. Subject: #{subject}.",
         input: "thread_id=#{thread_id}"
       )
     rescue => e
@@ -749,29 +804,51 @@ class ProcessMessageJob < ApplicationJob
   end
 
   def execute_gmail_new_thread(input, conversation)
+    agent = conversation.agent
+    prep = prepare_gmail_new_thread(input, agent, conversation)
+    unless prep[:ok]
+      return virtual_result("gmail_new_thread", prep[:error], input: "to=#{input['to']}".truncate(200))
+    end
+    send_gmail_new_thread(prep[:payload], agent, conversation)
+  end
+
+  def prepare_gmail_new_thread(input, agent, _conversation)
     to = input["to"].to_s.strip
     cc = input["cc"].to_s.strip.presence
     subject = input["subject"].to_s.strip
     body = input["body"].to_s
 
-    agent = conversation.agent
     gog_env = agent.own_gog_env
-    return virtual_result("gmail_new_thread", "Error: Agent does not have GOG configured.") unless gog_env
+    return { ok: false, error: "Error: Agent does not have GOG configured." } unless gog_env
     if to.empty? || subject.empty? || body.strip.empty?
-      return virtual_result("gmail_new_thread", "Error: 'to', 'subject', and 'body' are all required.")
+      return { ok: false, error: "Error: 'to', 'subject', and 'body' are all required." }
     end
 
-    recipients = [to, cc].compact
-    allow = Tools::EmailGate::Allowlist.new(agent).call(recipients)
+    allow = Tools::EmailGate::Allowlist.new(agent).call([to, cc].compact)
     unless allow.ok?
-      return virtual_result(
-        "gmail_new_thread",
-        "Error: Recipients not on allowlist: #{allow.blocked.join(', ')}. " \
-        "First-time outbound to a stranger requires explicit approval. " \
-        "Send a `send_message` to Jeremy asking him to add the address to the agent's email_allowlist, or to send the first email manually so the address becomes a known correspondent.",
-        input: "to=#{to}".truncate(200)
-      )
+      return {
+        ok: false,
+        error: "Error: Recipients not on allowlist: #{allow.blocked.join(', ')}. " \
+               "First-time outbound to a stranger requires explicit approval. " \
+               "Send a `send_message` to Jeremy asking him to add the address to the agent's email_allowlist, or to send the first email manually so the address becomes a known correspondent."
+      }
     end
+
+    {
+      ok: true,
+      recipients: recipients_from(to, cc),
+      payload: { "to" => to, "cc" => cc, "subject" => subject, "body" => body }
+    }
+  end
+
+  def send_gmail_new_thread(payload, agent, conversation)
+    gog_env = agent.own_gog_env
+    return virtual_result("gmail_new_thread", "Error: Agent does not have GOG configured.") unless gog_env
+
+    to      = payload["to"]
+    cc      = payload["cc"]
+    subject = payload["subject"]
+    body    = payload["body"]
 
     argv = ["/usr/local/bin/gog", "gmail", "send",
             "--to", to,
@@ -916,21 +993,45 @@ class ProcessMessageJob < ApplicationJob
   end
 
   def execute_send_email(input, conversation)
+    agent = conversation.agent
+    prep = prepare_send_email(input, agent, conversation)
+    unless prep[:ok]
+      return virtual_result("send_email", prep[:error], input: "to=#{input['to']}".truncate(200))
+    end
+    send_send_email(prep[:payload], agent, conversation)
+  end
+
+  def prepare_send_email(input, agent, _conversation)
     to = input["to"].to_s.strip
     cc = input["cc"].to_s.strip.presence
     subject = input["subject"].to_s.strip
     body = input["body"].to_s.strip
     reply_to_conversation_id = input["reply_to_conversation_id"]
 
-    agent = conversation.agent
-
     unless agent.email_handle.present?
-      return virtual_result("send_email", "Error: This agent does not have an email handle configured.")
+      return { ok: false, error: "Error: This agent does not have an email handle configured." }
     end
 
     if to.blank? || subject.blank? || body.blank?
-      return virtual_result("send_email", "Error: 'to', 'subject', and 'body' are all required.")
+      return { ok: false, error: "Error: 'to', 'subject', and 'body' are all required." }
     end
+
+    {
+      ok: true,
+      recipients: recipients_from(to, cc),
+      payload: {
+        "to" => to, "cc" => cc, "subject" => subject, "body" => body,
+        "reply_to_conversation_id" => reply_to_conversation_id
+      }
+    }
+  end
+
+  def send_send_email(payload, agent, conversation)
+    to      = payload["to"]
+    cc      = payload["cc"]
+    subject = payload["subject"]
+    body    = payload["body"]
+    reply_to_conversation_id = payload["reply_to_conversation_id"]
 
     gog_env = agent.own_gog_env
     if gog_env
@@ -1621,11 +1722,43 @@ class ProcessMessageJob < ApplicationJob
     end
   end
 
-  # Persist a PendingAction and notify the approver via Telegram. Returns the
-  # tool_result hash to feed back to the LLM, or nil if the approver isn't
-  # configured (in which case we fall through to normal execution rather than
-  # silently dropping the action).
-  def queue_for_approval(tool_use_block, input, agent, conversation)
+  # Tools that participate in the prepare-first email approval flow.
+  EMAIL_APPROVAL_TOOLS = %w[send_email gmail_reply gmail_new_thread].freeze
+
+  def email_approval_tool?(name)
+    EMAIL_APPROVAL_TOOLS.include?(name.to_s)
+  end
+
+  def prepare_email_action(name, input, agent, conversation)
+    case name.to_s
+    when "send_email"       then prepare_send_email(input, agent, conversation)
+    when "gmail_reply"      then prepare_gmail_reply(input, agent, conversation)
+    when "gmail_new_thread" then prepare_gmail_new_thread(input, agent, conversation)
+    end
+  end
+
+  def send_email_action(name, payload, agent, conversation)
+    case name.to_s
+    when "send_email"       then send_send_email(payload, agent, conversation)
+    when "gmail_reply"      then send_gmail_reply(payload, agent, conversation)
+    when "gmail_new_thread" then send_gmail_new_thread(payload, agent, conversation)
+    end
+  end
+
+  # Lowercased recipient addresses from one or more "To"/"Cc"-shaped headers.
+  # Handles comma-separated lists and "Name <addr>" forms.
+  def recipients_from(*headers)
+    headers.compact.flat_map { |h| h.to_s.split(",") }.filter_map do |part|
+      addr = extract_email(part).to_s.downcase
+      addr.presence
+    end
+  end
+
+  # Persist a PendingAction with the prepared payload and notify the approver
+  # via Telegram. Returns the tool_result hash to feed back to the LLM, or nil
+  # if the approver isn't configured (in which case the caller falls through
+  # to normal execution rather than silently dropping the action).
+  def queue_for_approval(tool_use_block, payload, agent, conversation, recipients: nil)
     approver = agent.approver_user
     unless approver
       Rails.logger.warn("[Approvals] Tool #{tool_use_block.name} flagged for approval but agent #{agent.id} has no approver; executing normally")
@@ -1641,7 +1774,7 @@ class ProcessMessageJob < ApplicationJob
       approver_user: approver,
       source_message: source_message,
       tool_name: tool_use_block.name,
-      tool_input: input,
+      tool_input: payload,
       tool_use_id: tool_use_block.id,
       status: "pending"
     )
@@ -1657,10 +1790,24 @@ class ProcessMessageJob < ApplicationJob
       "queued_for_approval: pending_action_id=#{pending.id} (delivery FAILED). The action is queued but the Telegram ping could not be sent. End your turn."
     end
 
+    log_entry = { "tool" => tool_use_block.name, "queued_for_approval" => pending.id }
+    log_entry["recipients"] = recipients.join(", ") if recipients.present?
+
     {
       content: content,
       summary: { name: tool_use_block.name, queued_for_approval: pending.id },
-      log_entry: { "tool" => tool_use_block.name, "queued_for_approval" => pending.id, "input" => input.to_s.truncate(200) }
+      log_entry: log_entry
+    }
+  end
+
+  # Pre-flight validation failed — surface the error to the LLM in the same
+  # shape a tool_result would take, so it can revise and retry without ever
+  # involving the human.
+  def prepare_failure_result(tool_name, error, input)
+    {
+      content: error,
+      summary: { name: tool_name, prepare_failed: true },
+      log_entry: { "tool" => tool_name, "prepare_failed" => error.to_s.truncate(200), "input" => input.to_s.truncate(200) }
     }
   end
 
