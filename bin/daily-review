@@ -7,6 +7,14 @@ set -euo pipefail
 # 3. Open a PR with targeted fixes, stripped of any identifying information
 # 4. File GitHub issues for larger architectural improvements
 
+# claude CLI lives under the deploy user's local bin — not on cron's minimal PATH.
+export PATH="/home/deploy/.local/bin:$PATH"
+
+# gh prefers GITHUB_TOKEN env-var over ~/.config/gh/hosts.yml. The env-var
+# (from bashrc) is a stale/invalid PAT; unset it so gh falls back to the
+# working hosts.yml auth for PR + issue creation.
+unset GITHUB_TOKEN
+
 cd /srv/steward
 
 LOG_DIR="/srv/steward/log"
