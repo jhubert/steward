@@ -22,15 +22,15 @@ module Tools
       duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round
 
       Result.new(
-        stdout: truncate(stdout),
-        stderr: truncate(stderr),
+        stdout: truncate(encode_utf8(stdout)),
+        stderr: truncate(encode_utf8(stderr)),
         exit_code: status.exitstatus,
         timed_out: false
       )
     rescue Timeout::Error
       duration_ms = (@tool.timeout_seconds * 1000)
       Result.new(
-        stdout: truncate(stdout || ""),
+        stdout: truncate(encode_utf8(stdout || "")),
         stderr: "Execution timed out after #{@tool.timeout_seconds} seconds",
         exit_code: nil,
         timed_out: true
@@ -110,6 +110,10 @@ module Tools
 
         [ stdout_str, stderr_str, wait_thr.value ]
       end
+    end
+
+    def encode_utf8(str)
+      str.encode("UTF-8", "BINARY", invalid: :replace, undef: :replace)
     end
 
     def truncate(str)
