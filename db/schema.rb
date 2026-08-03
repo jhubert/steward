@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_24_033250) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_03_122500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -189,6 +189,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_24_033250) do
     t.bigint "supersedes_id"
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
+    t.string "visibility", default: "agent", null: false
     t.bigint "workspace_id", null: false
     t.index ["agent_id"], name: "index_memory_items_on_agent_id"
     t.index ["conversation_id"], name: "index_memory_items_on_conversation_id"
@@ -197,6 +198,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_24_033250) do
     t.index ["user_id"], name: "index_memory_items_on_user_id"
     t.index ["workspace_id", "user_id", "agent_id"], name: "idx_memory_items_current", where: "(superseded_at IS NULL)"
     t.index ["workspace_id", "user_id", "category"], name: "index_memory_items_on_workspace_id_and_user_id_and_category"
+    t.index ["workspace_id", "user_id", "visibility"], name: "idx_memory_items_shared_core", where: "(superseded_at IS NULL)"
     t.index ["workspace_id"], name: "index_memory_items_on_workspace_id"
   end
 
