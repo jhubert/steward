@@ -585,6 +585,17 @@ class ProcessMessageJob < ApplicationJob
       unless agent_tool
         return virtual_result("schedule_task", "Error: Unknown tool '#{tool_name}'. Only enabled agent tools can be scheduled.")
       end
+
+      if interval_seconds
+        existing = ScheduledTask.enabled.find_by(
+          agent: conversation.agent, user: conversation.user, agent_tool: agent_tool
+        )
+        if existing
+          return virtual_result("schedule_task",
+            "Error: A recurring task for '#{tool_name}' already exists (ID: #{existing.id}, #{existing.interval_description}, next run #{existing.next_run_at&.iso8601}). " \
+            "Not creating a duplicate — cancel it first if you want to reschedule.")
+        end
+      end
     end
 
     task = ScheduledTask.create!(
