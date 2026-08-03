@@ -12,6 +12,8 @@ class ExtractMemoryJob < ApplicationJob
     return if unextracted.empty?
 
     context = dedup_context(conversation)
+    supersedable_ids = context.map(&:id).to_set
+
     extractor = Memory::Extractor.new(agent: conversation.agent)
     items = extractor.call(messages: unextracted, context: context)
 
@@ -28,10 +30,17 @@ class ExtractMemoryJob < ApplicationJob
         category: item[:category],
         content: item[:content],
         observed_at: item[:observed_at],
+        subject_scope: item[:scope] || 'principal',
+        expires_at: MemoryItem.expiry_for(item[:durability]),
         visibility: item[:core] ? MemoryItem::SHARED_VISIBILITY : MemoryItem::AGENT_VISIBILITY,
-        metadata: { source_message_range: [unextracted.first.id, last_message.id] }
+        metadata: {
+          source_message_range: [unextracted.first.id, last_message.id],
+          durability: item[:durability]
+        }
       )
       GenerateEmbeddingJob.perform_later(record.id)
+
+      retire_superseded(item[:supersedes], record, supersedable_ids)
 
       # Lift agent-side commitments into the relationship-level state so
       # they surface at the top of every future prompt for this user until
@@ -61,6 +70,27 @@ class ExtractMemoryJob < ApplicationJob
   end
 
   private
+
+  # Retire a fact the new one replaces. The extractor proposes the id; we only
+  # act on it if that id was in the context we actually showed it, which keeps
+  # supersession inside what this agent is allowed to see and makes a
+  # hallucinated id a no-op rather than a cross-tenant write.
+  def retire_superseded(old_id, replacement, allowed_ids)
+    return if old_id.blank?
+    return unless allowed_ids.include?(old_id)
+
+    old = MemoryItem.current.find_by(id: old_id)
+    return if old.nil?
+    return if old.id == replacement.id
+
+    old.supersede!(by: replacement)
+    Rails.logger.info(
+      "[Memory] Superseded item #{old.id} with #{replacement.id}: #{replacement.content.truncate(80)}"
+    )
+  rescue StandardError => e
+    # Never let a bad supersession hint lose the new memory we just wrote.
+    Rails.logger.warn("[Memory] Supersession of #{old_id} failed: #{e.message}")
+  end
 
   # Dedup context is scoped per-principal — extracting Alice's conversation
   # only checks against Alice's existing memories. Previously this pooled

@@ -8,6 +8,9 @@ module Memory
     # but inappropriate to share across principals.
     PRIVATE_CATEGORIES = %w[observation].freeze
 
+    VALID_SCOPES = MemoryItem::SUBJECT_SCOPES
+    VALID_DURABILITIES = MemoryItem::DURABILITIES
+
     PROMPT = <<~PROMPT
       You extract durable facts and impressions from a conversation segment
       that would be useful in FUTURE conversations with this user. Return a
@@ -19,6 +22,35 @@ module Memory
           "user" if unclear.
         - "core": true if this belongs in the SHARED PRINCIPAL CORE (see
           below). Defaults to false.
+        - "scope": "principal" or "world" (see Scope below). Defaults to
+          "principal".
+        - "durability": "permanent", "durable", or "transient" (see Durability
+          below). Defaults to "durable".
+        - "supersedes": the numeric id of a known fact (from the list below)
+          that this item REPLACES because it is no longer true. Only set this
+          when the old fact is now wrong, not merely when it is related.
+
+      Scope — this is the most important judgement you make:
+      - principal: something about THIS PERSON — their life, work, health,
+        relationships, preferences, decisions, commitments, history. Recall
+        exists to serve them, so this is what belongs in memory.
+      - world: general knowledge that happens to have come up — market data,
+        stock movements, news, weather, sports results, public company
+        details, research output, or anything you looked up rather than
+        learned about the person. These are NOT memories about the user.
+        When an agent is doing research or a scheduled briefing, almost
+        everything it reports is "world", not "principal".
+
+      A useful test: would this fact still be worth knowing if you were
+      talking to a different person? If yes, it is "world".
+
+      Durability:
+      - permanent: unlikely ever to change (birthplace, children's names,
+        a past event that happened)
+      - durable: true for now, could change (job title, current city, a
+        standing preference) — this is the default
+      - transient: has an obvious shelf life (an upcoming appointment date,
+        this quarter's figures, "is travelling next week")
 
       The shared principal core:
       Every agent serving this person can read core facts, so they don't each
@@ -58,7 +90,7 @@ module Memory
       - Only extract NEW information — skip anything substantively present
         in the known facts below
       - If a new fact REPLACES an existing one (e.g., the user moved cities),
-        say so in the content and the system will handle supersession separately
+        emit the new fact and set "supersedes" to the id of the old one
       - Write each item as a concise standalone statement in third person
       - Prefer extracting nothing over extracting noise. Return [] if nothing is durable.
       - Return ONLY the JSON array, no other text
@@ -93,7 +125,16 @@ module Memory
         content = item['content'].to_s.strip
         next unless VALID_CATEGORIES.include?(category) && content.present?
 
-        result = { category: category, content: content }
+        scope = item['scope'].to_s.strip
+        durability = item['durability'].to_s.strip
+
+        result = {
+          category: category,
+          content: content,
+          scope: VALID_SCOPES.include?(scope) ? scope : 'principal',
+          durability: VALID_DURABILITIES.include?(durability) ? durability : 'durable'
+        }
+
         if item['observed_at'].present?
           observed = parse_observed_at(item['observed_at'])
           result[:observed_at] = observed if observed
@@ -104,7 +145,15 @@ module Memory
         end
         # Private categories can never enter the shared core, whatever the
         # model claims — enforced here rather than trusted to the prompt.
-        result[:core] = core?(item) && !PRIVATE_CATEGORIES.include?(category)
+        # Everything that disqualifies an item from the shared core lives here,
+        # enforced in code rather than trusted to the prompt: private categories
+        # (an agent's own read on someone's mood) never travel, and a world fact
+        # isn't about the principal at all so there is nothing to share.
+        result[:core] = core?(item) &&
+                        !PRIVATE_CATEGORIES.include?(category) &&
+                        result[:scope] == 'principal'
+        supersedes = parse_supersedes(item['supersedes'])
+        result[:supersedes] = supersedes if supersedes
         result
       end
     rescue JSON::ParserError
@@ -121,11 +170,19 @@ module Memory
       nil
     end
 
+    # The model returns whatever it likes here; the caller re-checks that the id
+    # actually belongs to this user/agent before retiring anything.
+    def parse_supersedes(value)
+      return nil if value.nil? || value.to_s.strip.empty?
+      id = Integer(value.to_s.strip, exception: false)
+      id if id&.positive?
+    end
+
     def build_prompt(messages, context)
       parts = []
 
       if context.any?
-        known = context.map { |m| "- [#{m.category}] #{m.content}" }.join("\n")
+        known = context.map { |m| "- [id:#{m.id}] [#{m.category}] #{m.content}" }.join("\n")
         parts << "## Already Known Facts\n#{known}"
       end
 

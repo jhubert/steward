@@ -1409,7 +1409,16 @@ class ProcessMessageJob < ApplicationJob
       nil
     end
 
-    items = retriever.search(query: query, category: category, user_ids: user_ids)
+    # Prompt context is principal-only; an explicit recall can opt into the
+    # world/research facts an agent gathered along the way.
+    include_world = ActiveModel::Type::Boolean.new.cast(input["include_world"]) || false
+
+    items = retriever.search(
+      query: query,
+      category: category,
+      user_ids: user_ids,
+      include_world: include_world
+    )
 
     # Apply optional time-range filter
     if since_time

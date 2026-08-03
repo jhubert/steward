@@ -46,6 +46,19 @@ class ExtractMemoryJobCoreTest < ActiveSupport::TestCase
                  "observations must never be promoted into the shared core"
   end
 
+  test 'refuses to share a world fact even when the model marks it core' do
+    stub_llm_response(
+      '[{"category": "fact", "content": "WTI oil reached $86.80", "scope": "world", "core": true}]'
+    )
+
+    ExtractMemoryJob.perform_now(@conversation.id)
+
+    item = MemoryItem.find_by(content: 'WTI oil reached $86.80')
+    assert_equal 'world', item.subject_scope
+    assert_equal MemoryItem::AGENT_VISIBILITY, item.visibility,
+                 "a world fact is not about the principal, so it cannot be core"
+  end
+
   test 'dedup context includes core facts promoted by other agents' do
     MemoryItem.create!(
       workspace: workspaces(:default),

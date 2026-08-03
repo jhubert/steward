@@ -139,7 +139,8 @@ module Tools
               "description" => "Optional: filter results to a specific memory type"
             },
             "since" => { "type" => "string", "description" => "Optional ISO datetime — only return memories observed/created on or after this time" },
-            "until" => { "type" => "string", "description" => "Optional ISO datetime — only return memories observed/created before this time" }
+            "until" => { "type" => "string", "description" => "Optional ISO datetime — only return memories observed/created before this time" },
+            "include_world" => { "type" => "boolean", "description" => "Optional: also search general/world facts you gathered while researching (market data, news, public company details) rather than facts about this person. Default false — leave it off unless you are specifically looking up research you did earlier." }
           },
           "required" => ["query"]
         }

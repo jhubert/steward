@@ -85,6 +85,26 @@ class Memory::SharedCoreTest < ActiveSupport::TestCase
                "sharing must never cross the workspace boundary"
   end
 
+  # --- the core still obeys scope and expiry ---
+
+  test 'an expired core fact is not recalled' do
+    memory('Jeremy is travelling until July 30',
+           agent: agents(:steward), visibility: MemoryItem::SHARED_VISIBILITY)
+      .update!(expires_at: 1.day.ago)
+
+    assert_nil recall('travelling July'),
+               "expiry applies to core facts too"
+  end
+
+  test 'a world-scoped fact stays out of prompt context even if shared' do
+    m = memory('Reddit fell 21% on August 1',
+               agent: agents(:steward), visibility: MemoryItem::SHARED_VISIBILITY)
+    m.update!(subject_scope: 'world')
+
+    assert_nil recall('Reddit August fell'),
+               "world facts never enter prompt context, shared or not"
+  end
+
   # --- scope-level guarantees ---
 
   test 'readable_by_agent returns own memories plus non-private core' do

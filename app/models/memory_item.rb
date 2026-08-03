@@ -13,8 +13,20 @@ class MemoryItem < ApplicationRecord
   SHARED_VISIBILITY = "workspace".freeze
   VISIBILITIES = [AGENT_VISIBILITY, SHARED_VISIBILITY].freeze
 
+  # Who a memory is *about*, as opposed to who can read it. World facts are
+  # things an agent looked up (market data, news) rather than learned about the
+  # person; they stay searchable but never enter prompt context.
+  SUBJECT_SCOPES = %w[principal world].freeze
+
+  # How long a fact stays live. `transient` covers things with an obvious shelf
+  # life (a scheduled date, this quarter's numbers); `permanent` and `durable`
+  # never auto-expire and differ only as a hint to future supersession logic.
+  DURABILITIES = %w[permanent durable transient].freeze
+  TRANSIENT_TTL = 30.days
+
   validates :content, presence: true
   validates :visibility, inclusion: { in: VISIBILITIES }
+  validates :subject_scope, inclusion: { in: SUBJECT_SCOPES }
 
   scope :with_embedding, -> { where.not(embedding: nil) }
 
@@ -27,8 +39,24 @@ class MemoryItem < ApplicationRecord
   scope :shared_core, -> { where(visibility: SHARED_VISIBILITY) }
   scope :agent_private, -> { where(visibility: AGENT_VISIBILITY) }
 
+  # Knowledge about the principal, as opposed to world facts an agent picked up
+  # while researching. Only these belong in prompt context.
+  scope :about_principal, -> { where(subject_scope: "principal") }
+  scope :about_world, -> { where(subject_scope: "world") }
+
+  scope :unexpired, -> { where("expires_at IS NULL OR expires_at > ?", Time.current) }
+
   def shared?
     visibility == SHARED_VISIBILITY
+  end
+
+  def expired?
+    expires_at.present? && expires_at <= Time.current
+  end
+
+  # Translates a durability class into a concrete expiry.
+  def self.expiry_for(durability)
+    durability.to_s == "transient" ? TRANSIENT_TTL.from_now : nil
   end
 
   # Readable by `agent`: anything that agent extracted itself, plus the shared

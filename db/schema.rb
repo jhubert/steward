@@ -183,8 +183,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_03_122500) do
     t.bigint "conversation_id"
     t.datetime "created_at", null: false
     t.vector "embedding", limit: 1536
+    t.datetime "expires_at"
     t.jsonb "metadata", default: {}
     t.datetime "observed_at"
+    t.string "subject_scope", default: "principal", null: false
     t.datetime "superseded_at"
     t.bigint "supersedes_id"
     t.datetime "updated_at", null: false
@@ -194,8 +196,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_03_122500) do
     t.index ["agent_id"], name: "index_memory_items_on_agent_id"
     t.index ["conversation_id"], name: "index_memory_items_on_conversation_id"
     t.index ["embedding"], name: "index_memory_items_on_embedding", opclass: :vector_cosine_ops, using: :hnsw
+    t.index ["expires_at"], name: "index_memory_items_on_expires_at", where: "(expires_at IS NOT NULL)"
     t.index ["supersedes_id"], name: "index_memory_items_on_supersedes_id"
     t.index ["user_id"], name: "index_memory_items_on_user_id"
+    t.index ["workspace_id", "user_id", "agent_id", "subject_scope"], name: "idx_memory_items_current_scoped", where: "(superseded_at IS NULL)"
     t.index ["workspace_id", "user_id", "agent_id"], name: "idx_memory_items_current", where: "(superseded_at IS NULL)"
     t.index ["workspace_id", "user_id", "category"], name: "index_memory_items_on_workspace_id_and_user_id_and_category"
     t.index ["workspace_id", "user_id", "visibility"], name: "idx_memory_items_shared_core", where: "(superseded_at IS NULL)"
