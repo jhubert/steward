@@ -27,7 +27,9 @@ module Memory
     #   user_ids: search across multiple users (for principal mode)
     def search(query:, category: nil, user_ids: nil)
       scope_override = if user_ids.present?
-        MemoryItem.current.where(workspace: @workspace, user_id: user_ids, agent: @agent)
+        MemoryItem.current
+                  .where(workspace: @workspace, user_id: user_ids)
+                  .readable_by_agent(@agent)
       else
         base_scope
       end
@@ -42,8 +44,14 @@ module Memory
 
     private
 
+    # This agent's own memories plus the shared principal core for this user.
+    # Sharing is bounded to one (workspace, user) — never across tenants,
+    # never across principals — and private categories stay with the agent
+    # that formed them.
     def base_scope
-      MemoryItem.current.where(workspace: @workspace, user: @user, agent: @agent)
+      MemoryItem.current
+                .where(workspace: @workspace, user: @user)
+                .readable_by_agent(@agent)
     end
 
     def semantic_search(query, scope: nil)

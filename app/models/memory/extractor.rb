@@ -17,6 +17,28 @@ module Memory
         - "subject" (only for "commitment" items): "agent" if the AGENT
           promised to do something, "user" if the user did. Defaults to
           "user" if unclear.
+        - "core": true if this belongs in the SHARED PRINCIPAL CORE (see
+          below). Defaults to false.
+
+      The shared principal core:
+      Every agent serving this person can read core facts, so they don't each
+      have to learn the same things separately. Mark an item core when it is
+      durable, identity-level knowledge that ANY agent working for this person
+      would benefit from — who they are, the people around them, where they
+      live and work, their role, health constraints, and long-standing
+      preferences about how they like to be worked with.
+
+      Do NOT mark as core:
+      - anything specific to one agent's domain or workstream
+      - transient or in-progress details (this week's task, a pending draft)
+      - "observation" items — emotional and tone signals stay with the agent
+        that formed them, never shared
+      - anything the person appears to have shared in confidence with this
+        agent in particular
+
+      When in doubt, leave it out. A fact that is merely useful is not core;
+      a fact whose absence would make another agent visibly not know this
+      person is core.
 
       Categories:
       - decision: A choice the user made (e.g., "chose Rails over Django")
@@ -80,10 +102,17 @@ module Memory
           subject = item['subject'].to_s.strip
           result[:subject] = subject if %w[user agent].include?(subject)
         end
+        # Private categories can never enter the shared core, whatever the
+        # model claims — enforced here rather than trusted to the prompt.
+        result[:core] = core?(item) && !PRIVATE_CATEGORIES.include?(category)
         result
       end
     rescue JSON::ParserError
       []
+    end
+
+    def core?(item)
+      ActiveModel::Type::Boolean.new.cast(item['core']) || false
     end
 
     def parse_observed_at(value)
