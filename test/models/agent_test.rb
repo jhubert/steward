@@ -249,6 +249,20 @@ class AgentTest < ActiveSupport::TestCase
     end
   end
 
+  test 'enable_skill! re-syncs description on an already-provisioned tool' do
+    agent = agents(:steward)
+    Skills::Registry.instance.reload!
+
+    agent.enable_skill!('github')
+    tool = agent.agent_tools.find_by(name: 'github')
+    tool.update!(description: 'stale description from an older skill definition')
+
+    agent.enable_skill!('github')
+
+    assert_equal Skills::Registry.instance.find('github').tool_definitions.first[:description],
+                 tool.reload.description
+  end
+
   test 'enable_skill! raises on unknown skill' do
     agent = agents(:steward)
 

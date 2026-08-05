@@ -99,15 +99,15 @@ class Agent < ApplicationRecord
     raise ArgumentError, "Unknown skill: #{skill_name}" unless skill
 
     skill.tool_definitions.each do |defn|
-      agent_tools.find_or_create_by!(name: defn[:name]) do |tool|
-        tool.workspace = workspace
-        tool.description = defn[:description]
-        tool.input_schema = defn[:input_schema]
-        tool.command_template = defn[:command_template]
-        tool.working_directory = defn[:working_directory]
-        tool.timeout_seconds = defn[:timeout_seconds]
-        tool.enabled = true
-      end
+      tool = agent_tools.find_or_initialize_by(name: defn[:name])
+      tool.workspace ||= workspace
+      tool.enabled = true if tool.new_record?
+      tool.description = defn[:description]
+      tool.input_schema = defn[:input_schema]
+      tool.command_template = defn[:command_template]
+      tool.working_directory = defn[:working_directory]
+      tool.timeout_seconds = defn[:timeout_seconds]
+      tool.save!
     end
   end
 
