@@ -3,8 +3,17 @@ Rails.application.config.after_initialize do
 
   if key.blank?
     if Rails.env.test?
-      Rails.logger.warn("[Anthropic] No API key — using nil client in test")
-      Rails.application.config.anthropic_client = nil
+      # Build a real client object with a placeholder key rather than nil.
+      # Tests stub `.messages` on this object, and Mocha cannot stub nil
+      # ("can't stub method on frozen object: nil"), so a nil client fails
+      # every LLM-touching test on any machine without credentials — which is
+      # exactly what CI is. No request is ever made: each of those tests
+      # replaces the messages API before the job runs.
+      Rails.logger.warn("[Anthropic] No API key — using placeholder client in test")
+      Rails.application.config.anthropic_client = Anthropic::Client.new(
+        api_key: "test-placeholder-key",
+        timeout: 120.0
+      )
     else
       raise "Anthropic API key not found. Set ANTHROPIC_API_KEY env var or add to credentials."
     end
