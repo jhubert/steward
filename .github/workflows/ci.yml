@@ -44,7 +44,10 @@ jobs:
 
     services:
       postgres:
-        image: postgres
+        # pgvector, not plain postgres: db/schema.rb does `enable_extension
+        # "vector"` for memory-item and message embeddings, and schema load
+        # aborts on an image without it. Tag matches production (PG 17).
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
