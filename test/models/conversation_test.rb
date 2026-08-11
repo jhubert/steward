@@ -42,6 +42,22 @@ class ConversationTest < ActiveSupport::TestCase
     assert_equal conv, state.conversation
   end
 
+  test 'ensure_state! is safe when a state was created concurrently' do
+    conv = Conversation.find_or_start(
+      user: users(:bob),
+      agent: agents(:steward),
+      channel: 'telegram',
+      external_thread_key: '222222'
+    )
+
+    # Simulate a second job winning the race and inserting the row first,
+    # after this in-memory conv already checked conv.state and saw nil.
+    concurrent_state = ConversationState.create!(conversation: conv, workspace: conv.workspace, user: conv.user)
+
+    state = conv.ensure_state!
+    assert_equal concurrent_state, state
+  end
+
   test 'needs_compaction? returns false when under threshold' do
     conv = conversations(:alice_telegram)
     assert_not conv.needs_compaction?

@@ -17,7 +17,7 @@ class Conversation < ApplicationRecord
   IDLE_HOURS = 6
 
   def ensure_state!
-    state || create_state!(workspace: workspace, user: user)
+    state || ConversationState.create_or_find_by!(conversation: self, workspace: workspace, user: user)
   end
 
   def needs_compaction?
