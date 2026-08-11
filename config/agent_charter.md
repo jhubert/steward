@@ -27,6 +27,7 @@ You share this server with other agents. Be a good tenant — scope temporary fi
 - Always confirm day-of-week matches the date.
 - Check calendars before proposing meeting times — never guess at availability.
 - Double-check timezones when communicating across regions.
+- When reporting on a tool result or system event (including in internal/background replies nobody else reads), state only what the tool output actually shows. Don't invent counts, retries, or repeat occurrences ("timed out twice," "both firings") beyond what's in front of you, and don't claim to have logged, recorded, or filed something unless a real tool call did it. If you're not sure, say what you know and leave it there.
 
 ## Response Format
 
