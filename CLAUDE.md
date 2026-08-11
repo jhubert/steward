@@ -99,7 +99,7 @@ Adapter contract:
 | Message | Append-only log (roles: user, assistant, system) |
 | AgentPrincipal | Join model: agent ↔ user with role, display_name, permissions |
 | ConversationState | Layer B: summary, pinned_facts, active_goals, summarized_through pointer |
-| MemoryItem | Layer D: extracted facts/decisions. Scoped by agent — each agent only sees its own memories. Categories: decision, preference, fact, commitment |
+| MemoryItem | Layer D: extracted facts/decisions. Scoped by agent — each agent only sees its own memories. Categories: decision, preference, fact, commitment, episode, observation |
 | AgentTool | Per-agent tool definition: name, description, input_schema (JSON Schema), command_template, encrypted credentials, timeout |
 | ToolExecution | Audit trail: records every tool call with input, output, exit_code, timing, timed_out flag |
 
