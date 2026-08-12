@@ -986,6 +986,71 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     end
   end
 
+  test 'remember virtual tool supersedes an existing memory when given its id' do
+    old_item = memory_items(:alice_fact)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'remember',
+      tool_id: 'toolu_remember_supersede',
+      input: { 'content' => 'Alice is based in Vancouver, not Toronto', 'category' => 'fact', 'supersedes' => old_item.id }
+    )
+    text_response = build_text_response('Updated.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    assert_difference 'MemoryItem.count', 1 do
+      ProcessMessageJob.perform_now(jennifer_message.id)
+    end
+
+    assert old_item.reload.superseded_at.present?
+    assert_equal MemoryItem.last, old_item.superseded_by
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/superseded memory #{old_item.id}/, tool_content[:content])
+  end
+
+  test 'remember virtual tool ignores an unknown supersedes id without failing' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'remember',
+      tool_id: 'toolu_remember_supersede_bad',
+      input: { 'content' => 'Alice likes tea', 'category' => 'preference', 'supersedes' => 999_999 }
+    )
+    text_response = build_text_response('Noted.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    assert_difference 'MemoryItem.count', 1 do
+      ProcessMessageJob.perform_now(jennifer_message.id)
+    end
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/no existing memory with id 999999 found/, tool_content[:content])
+  end
+
   test 'create_skill virtual tool creates skill files and reloads registry' do
     tool_use_response = build_tool_use_response(
       tool_name: 'create_skill',
