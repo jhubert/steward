@@ -41,6 +41,14 @@ tools:
       (select account)
 
       Use "<command> --help" to discover additional flags for any subcommand.
+
+      IMPORTANT: this command string is parsed with POSIX shell-word-splitting
+      only — it does NOT run through a real shell. Pipes (|), redirects (>,
+      2>&1), &&, and bash ANSI-C $'...' quoting are NOT supported and will be
+      passed through as literal arguments to gog, causing errors. Use plain
+      'single' or "double" quoted arguments only. For multi-line text, put
+      literal newline characters inside a quoted string rather than using
+      $'...\n...' escapes.
     input_schema:
       type: object
       required:
