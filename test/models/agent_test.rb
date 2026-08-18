@@ -6,7 +6,7 @@ class AgentTest < ActiveSupport::TestCase
   end
 
   test 'model returns default when not configured' do
-    assert_equal 'claude-sonnet-4-6', agents(:steward).model
+    assert_equal 'claude-sonnet-5', agents(:steward).model
   end
 
   test 'model returns configured value' do

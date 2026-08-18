@@ -37,10 +37,11 @@ module Email
       response = Rails.configuration.anthropic_client.messages.create(
         model: @agent.extraction_model,
         max_tokens: 16,
+        thinking: { type: "disabled" },
         messages: [{ role: "user", content: prompt }]
       )
 
-      choice = response.content.first.text.strip.scan(/\d+/).first&.to_i
+      choice = response.content.find { |b| b.respond_to?(:text) }&.text.to_s.strip.scan(/\d+/).first&.to_i
       if choice && choice >= 1 && choice <= candidates.size
         candidates[choice - 1]
       else
