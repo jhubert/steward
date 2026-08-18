@@ -481,7 +481,25 @@ class ProcessMessageJob < ApplicationJob
     )
     GenerateEmbeddingJob.perform_later(record.id)
 
-    virtual_result("remember", "Remembered: [#{category}] #{content}", input: content.truncate(200))
+    note = supersede_via_remember(input["supersedes"], record, conversation)
+
+    virtual_result("remember", "Remembered: [#{category}] #{content}#{note}", input: content.truncate(200))
+  end
+
+  # Mirrors ExtractMemoryJob#retire_superseded: only retires a memory this
+  # agent can actually see for this user, so a bad or hallucinated id is a
+  # silent no-op rather than a cross-agent/cross-user write.
+  def supersede_via_remember(old_id, replacement, conversation)
+    return "" if old_id.blank?
+
+    old = MemoryItem.current
+                     .where(user: conversation.user)
+                     .readable_by_agent(conversation.agent)
+                     .find_by(id: old_id)
+    return " (note: no existing memory with id #{old_id} found to supersede)" if old.nil?
+
+    old.supersede!(by: replacement)
+    " (superseded memory #{old.id})"
   end
 
   def execute_google_setup(input, conversation)
@@ -1447,7 +1465,7 @@ class ProcessMessageJob < ApplicationJob
 
     items.each do |item|
       date = (item.observed_at || item.created_at).strftime('%Y-%m-%d')
-      line = "- [#{item.category}] #{item.content} (#{date})"
+      line = "- [id:#{item.id}] [#{item.category}] #{item.content} (#{date})"
       # Always-on provenance in principal mode — even with one match, the model
       # must see whose memory it's quoting before it speaks for them.
       line += " [from #{user_names[item.user_id]}]" if user_names.key?(item.user_id)

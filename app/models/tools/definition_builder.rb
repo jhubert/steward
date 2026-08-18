@@ -22,7 +22,7 @@ module Tools
       },
       {
         name: "remember",
-        description: "Save an important fact to long-term memory. Use this when the user shares something worth remembering across all future conversations — a preference, decision, personal detail, or commitment. These memories persist permanently and are recalled in every conversation with this user.",
+        description: "Save an important fact to long-term memory. Use this when the user shares something worth remembering across all future conversations — a preference, decision, personal detail, or commitment. These memories persist permanently and are recalled in every conversation with this user. If this corrects an earlier memory (the user tells you something you previously got wrong), call 'recall' first to find that memory's id and pass it as 'supersedes' so the old, wrong fact stops surfacing.",
         input_schema: {
           "type" => "object",
           "properties" => {
@@ -31,7 +31,8 @@ module Tools
               "type" => "string",
               "enum" => ["decision", "preference", "fact", "commitment"],
               "description" => "The type of memory: decision (a choice made), preference (a like/dislike), fact (a detail about the user), commitment (something promised for the future)"
-            }
+            },
+            "supersedes" => { "type" => "integer", "description" => "The id of an existing memory (from a 'recall' result) that this new fact replaces because it is now wrong. Omit unless you're correcting a prior memory." }
           },
           "required" => ["content", "category"]
         }
