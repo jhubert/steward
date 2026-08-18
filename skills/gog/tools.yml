@@ -37,8 +37,10 @@ tools:
       CHAT: chat spaces list | chat messages list <spaceId> | chat messages send
       <spaceId> --text MSG | chat dm send <userId> --text MSG
 
-      Global flags: --json (JSON output), --plain (TSV output), --account EMAIL
-      (select account)
+      Global flags: --json (JSON output), --plain (TSV output). Do NOT pass
+      --account yourself — the correct account is injected automatically by
+      the system, and specifying a different --account will select an
+      unauthorized account and fail with an auth error.
 
       Use "<command> --help" to discover additional flags for any subcommand.
 
