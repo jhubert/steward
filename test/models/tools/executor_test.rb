@@ -106,6 +106,28 @@ class Tools::ExecutorTest < ActiveSupport::TestCase
     assert_includes result.stdout, 'val123'
   end
 
+  test 'call preserves multi-byte UTF-8 output from subprocess' do
+    @tool.command_template = 'python3 -c {script}'
+    @tool.working_directory = nil
+    executor = Tools::Executor.new(agent_tool: @tool)
+
+    result = executor.call({ 'script' => "print('em dash \\u2014 and \\u201cquotes\\u201d')" })
+    assert_equal 0, result.exit_code
+    assert_equal "em dash — and “quotes”\n", result.stdout
+  end
+
+  test 'call replaces genuinely invalid byte sequences without crashing' do
+    @tool.command_template = 'python3 -c {script}'
+    @tool.working_directory = nil
+    executor = Tools::Executor.new(agent_tool: @tool)
+
+    result = executor.call({ 'script' => "import sys; sys.stdout.buffer.write(b'broken \\xff\\xfe bytes')" })
+    assert_equal 0, result.exit_code
+    assert result.stdout.valid_encoding?
+    assert_includes result.stdout, 'broken'
+    assert_includes result.stdout, 'bytes'
+  end
+
   test 'call merges extra_env into environment' do
     @tool.command_template = 'bash -c {cmd}'
     @tool.credentials = { 'TOOL_KEY' => 'from_tool' }

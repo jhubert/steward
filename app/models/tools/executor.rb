@@ -113,7 +113,7 @@ module Tools
     end
 
     def encode_utf8(str)
-      str.encode("UTF-8", "BINARY", invalid: :replace, undef: :replace)
+      str.dup.force_encoding("UTF-8").scrub
     end
 
     def truncate(str)
