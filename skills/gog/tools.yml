@@ -13,7 +13,7 @@ tools:
 
       DRIVE: drive ls [--parent FOLDER_ID] | drive search <query> | drive get
       <fileId> | drive download <fileId> | drive upload <localPath> [--parent
-      FOLDER_ID] | drive mkdir <name> | drive share <fileId> --type user --role
+      FOLDER_ID] | drive mkdir <name> | drive share <fileId> --to user --role
       writer --email USER | drive url <fileId>
 
       SHEETS: sheets create <title> | sheets get <spreadsheetId> <range> | sheets
@@ -24,10 +24,12 @@ tools:
       GMAIL: gmail search <query> [--limit N] | gmail get <messageId> | gmail
       thread get <threadId> [--full] | gmail thread modify <threadId>
       [--add LABELS] [--remove LABELS] (use --remove UNREAD to mark read) |
-      gmail send --to ADDR --subject SUBJ --body-html HTML
-      [--cc ADDR] [--reply-to-message-id ID] [--thread-id ID] [--reply-all]
-      [--quote] [--attach PATH] (always prefer --body-html over --body) | gmail drafts create --to ADDR --subject SUBJ
-      | gmail labels list
+      gmail drafts create --to ADDR --subject SUBJ | gmail labels list
+
+      NOTE: gmail send / reply / forward / draft (singular) are blocked via
+      this raw tool and will error. Use the gmail_reply (for replies) or
+      gmail_new_thread (for new outbound mail) virtual tools instead — those
+      validate recipients, threading, and content grounding.
 
       CALENDAR: calendar events [calendarId] [--from DATE --to DATE] | calendar
       create <calendarId> --summary TITLE --start DATETIME --end DATETIME |

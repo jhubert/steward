@@ -7,8 +7,9 @@ touch "$STATE_FILE"
 last_fingerprint=$(cat "$STATE_FILE" 2>/dev/null || echo "")
 
 # Fetch unread threads (limit 10 to catch activity beyond just the top thread)
-result=$(gog gmail search "in:inbox is:unread" --limit 10 --json --no-input 2>&1)
-if [[ $? -ne 0 ]]; then
+# Uses `if ! result=$(...)` rather than a post-hoc `$?` check, since `set -e`
+# would otherwise kill the script on failure before the check ever runs.
+if ! result=$(gog gmail search "in:inbox is:unread" --limit 10 --json --no-input 2>&1); then
   echo "Error checking email: $result" >&2
   exit 1
 fi
