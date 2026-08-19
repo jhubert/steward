@@ -70,11 +70,12 @@ module Memory
       response = Rails.configuration.anthropic_client.messages.create(
         model: @conversation.agent.extraction_model,
         max_tokens: 400,
+        thinking: { type: 'disabled' },
         system: PROMPT,
         messages: [{ role: 'user', content: content }]
       )
 
-      parse_json(response.content.first.text)
+      parse_json(response.content.find { |b| b.respond_to?(:text) }&.text.to_s)
     rescue StandardError => e
       Rails.logger.warn("[EpisodeBuilder] LLM call failed: #{e.message}")
       [nil, nil]

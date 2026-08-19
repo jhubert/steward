@@ -24,11 +24,12 @@ module Compaction
       response = Rails.configuration.anthropic_client.messages.create(
         model: @agent.summarization_model,
         max_tokens: 1500,
+        thinking: { type: 'disabled' },
         system: PROMPT,
         messages: [{ role: 'user', content: content }]
       )
 
-      response.content.first.text
+      response.content.find { |b| b.respond_to?(:text) }&.text.to_s
     end
 
     private

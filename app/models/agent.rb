@@ -1,13 +1,20 @@
 class Agent < ApplicationRecord
   include WorkspaceScoped
 
+  # Current models first, then the older ones still assigned to live agents.
+  # Note: the 5-series models run with adaptive thinking on by default, so any
+  # call using them must either budget max_tokens for thinking or pass
+  # thinking: { type: 'disabled' } (see Memory::Extractor and friends).
   AVAILABLE_MODELS = %w[
-    claude-opus-4-7
-    claude-sonnet-4-6
+    claude-opus-5
+    claude-sonnet-5
     claude-haiku-4-5-20251001
+    claude-opus-4-7
+    claude-opus-4-6
+    claude-sonnet-4-6
   ].freeze
 
-  DEFAULT_MODEL = 'claude-sonnet-4-6'
+  DEFAULT_MODEL = 'claude-sonnet-5'
   DEFAULT_EXTRACTION_MODEL = 'claude-haiku-4-5-20251001'
 
   has_many :conversations, dependent: :destroy

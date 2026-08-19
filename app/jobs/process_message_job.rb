@@ -1730,6 +1730,7 @@ class ProcessMessageJob < ApplicationJob
       response = Rails.configuration.anthropic_client.messages.create(
         model: target.model,
         max_tokens: 1000,
+        thinking: { type: 'disabled' },
         system: consultation_system,
         messages: consultation_messages
       )
@@ -1857,12 +1858,20 @@ class ProcessMessageJob < ApplicationJob
     content_blocks.filter_map { |b| b.text if b.respond_to?(:text) }.join("\n")
   end
 
+  # Thinking blocks must be echoed back unchanged when continuing a turn on the
+  # same model (models with adaptive thinking reject edited or dropped blocks),
+  # so they are passed through verbatim alongside text and tool_use.
   def serialize_content(content_blocks)
     content_blocks.map do |block|
-      if block.type.to_s == 'text'
+      case block.type.to_s
+      when 'text'
         { type: 'text', text: block.text }
-      elsif block.type.to_s == 'tool_use'
+      when 'tool_use'
         { type: 'tool_use', id: block.id, name: block.name, input: block.input }
+      when 'thinking'
+        { type: 'thinking', thinking: block.thinking, signature: block.signature }
+      when 'redacted_thinking'
+        { type: 'redacted_thinking', data: block.data }
       end
     end.compact
   end

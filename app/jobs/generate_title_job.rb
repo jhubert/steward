@@ -21,11 +21,12 @@ class GenerateTitleJob < ApplicationJob
     response = Rails.configuration.anthropic_client.messages.create(
       model: conversation.agent.extraction_model,
       max_tokens: 30,
+      thinking: { type: "disabled" },
       system: PROMPT,
       messages: [{ role: "user", content: transcript }]
     )
 
-    title = response.content.first.text.strip.truncate(100)
+    title = response.content.find { |b| b.respond_to?(:text) }&.text.to_s.strip.truncate(100)
     conversation.update_column(:title, title) if title.present?
   end
 end

@@ -106,11 +106,12 @@ module Memory
       response = Rails.configuration.anthropic_client.messages.create(
         model: @agent.extraction_model,
         max_tokens: 2000,
+        thinking: { type: 'disabled' },
         system: PROMPT,
         messages: [{ role: 'user', content: content }]
       )
 
-      parse_response(response.content.first.text)
+      parse_response(response.content.find { |b| b.respond_to?(:text) }&.text.to_s)
     end
 
     def parse_response(text)
