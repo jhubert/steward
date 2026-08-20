@@ -21,8 +21,10 @@ tools:
       <range> <values> | sheets metadata <spreadsheetId> | sheets export
       <spreadsheetId> [--format csv|xlsx|pdf]
 
-      GMAIL: gmail search <query> [--limit N] | gmail get <messageId> | gmail
-      thread get <threadId> [--full] | gmail thread modify <threadId>
+      GMAIL: gmail search <query> [--limit N] | gmail get <messageId> (already
+      returns the full message body by default — there is no --full flag on
+      this subcommand) | gmail thread get <threadId> [--full] (--full is
+      valid ONLY here, not on "gmail get") | gmail thread modify <threadId>
       [--add LABELS] [--remove LABELS] (use --remove UNREAD to mark read) |
       gmail drafts create --to ADDR --subject SUBJ | gmail labels list
 

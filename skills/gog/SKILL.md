@@ -45,7 +45,7 @@ gmail thread modify <thread_id> --add "LabelName" --remove "OtherLabel"
 When checking email, always follow this pattern:
 1. Search for unread: `gmail search in:inbox is:unread`
 2. Read the full thread: `gmail thread get <thread_id>` — this shows ALL messages, including earlier context you need to understand replies
-3. Take action (reply, forward, etc.)
+3. Take action (reply, forward, etc.). If your instructions include a hard style rule (banned words/phrases/punctuation), do a mechanical check of the draft text against that rule before sending — don't rely on getting it right during generation alone.
 4. Mark as read: `gmail thread modify <thread_id> --remove UNREAD`
 
 ### Calendar
