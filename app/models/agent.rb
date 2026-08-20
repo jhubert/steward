@@ -1,17 +1,13 @@
 class Agent < ApplicationRecord
   include WorkspaceScoped
 
-  # Current models first, then the older ones still assigned to live agents.
-  # Note: the 5-series models run with adaptive thinking on by default, so any
-  # call using them must either budget max_tokens for thinking or pass
+  # The 5-series models run with adaptive thinking on by default, so any call
+  # using them must either budget max_tokens for thinking or pass
   # thinking: { type: 'disabled' } (see Memory::Extractor and friends).
   AVAILABLE_MODELS = %w[
     claude-opus-5
     claude-sonnet-5
     claude-haiku-4-5-20251001
-    claude-opus-4-7
-    claude-opus-4-6
-    claude-sonnet-4-6
   ].freeze
 
   DEFAULT_MODEL = 'claude-sonnet-5'
@@ -49,7 +45,9 @@ class Agent < ApplicationRecord
   end
 
   def token_budgets
-    defaults = { 'agent_core' => 800, 'skills' => 2000, 'state' => 1500, 'history' => 4000, 'response' => 4000, 'principal_context' => 1200, 'retrieval' => 800, 'background_activity' => 800 }
+    # 'response' becomes the API max_tokens, which on the 5-series models caps
+    # thinking and reply text together — hence the headroom over the other budgets.
+    defaults = { 'agent_core' => 800, 'skills' => 2000, 'state' => 1500, 'history' => 4000, 'response' => 16384, 'principal_context' => 1200, 'retrieval' => 800, 'background_activity' => 800 }
     defaults.merge(settings&.dig('token_budgets') || {})
   end
 
