@@ -1,6 +1,8 @@
 require 'test_helper'
 
 class ExtractMemoryJobTest < ActiveSupport::TestCase
+  include ActiveJob::TestHelper
+
   setup do
     as_workspace(:default)
     @conversation = conversations(:alice_telegram)
@@ -64,6 +66,20 @@ class ExtractMemoryJobTest < ActiveSupport::TestCase
     # Pointer still advances
     state = @conversation.state.reload
     assert_equal messages(:steward_reply).id, state.extracted_through_message_id
+  end
+
+  test 're-enqueues instead of double-extracting when another run holds the conversation lock' do
+    stub_llm_response('[{"category": "fact", "content": "User name is Alice"}]')
+    ExtractMemoryJob.any_instance.stubs(:acquire_conversation_lock).returns(false)
+
+    assert_no_difference 'MemoryItem.count' do
+      assert_enqueued_with(job: ExtractMemoryJob, args: [@conversation.id]) do
+        ExtractMemoryJob.perform_now(@conversation.id)
+      end
+    end
+
+    state = @conversation.state.reload
+    assert_nil state.extracted_through_message_id
   end
 
   test 'discards job when conversation not found' do
