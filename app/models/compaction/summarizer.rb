@@ -12,6 +12,7 @@ module Compaction
       - Write in third person ("The user asked about...", "The assistant suggested...")
       - If there's an existing summary, merge the new messages into it
       - When writing any specific date, verify the day-of-week against "Today's Date" below. If the existing summary contains dates that contradict today's actual date, correct them rather than preserving them.
+      - Treat the existing summary as a draft, not as verified fact. Claims about system or tool mechanics (e.g. "duplicate firings", "retries", "race conditions") are especially prone to compounding: once stated, they get copied forward unchecked in every future summary. Before repeating such a claim, check whether the messages you can actually see support it. If they don't, drop the claim or rephrase it as something observed once rather than an ongoing system behavior.
     PROMPT
 
     def initialize(agent:)
