@@ -61,6 +61,25 @@ module Tools
         }
       },
       {
+        name: "basecamp_setup",
+        description: "Connect a Basecamp account to yourself so you can use the basecamp tool. Use 'check' to see whether Basecamp is already connected, 'start' to get an authorization URL to send the user, and 'complete' to finish setup with the callback URL they paste back. Setup is per agent: the account you connect is the one your Basecamp actions will be attributed to.",
+        input_schema: {
+          "type" => "object",
+          "properties" => {
+            "action" => {
+              "type" => "string",
+              "enum" => ["check", "start", "complete"],
+              "description" => "The setup action to perform"
+            },
+            "callback_url" => {
+              "type" => "string",
+              "description" => "The full callback URL the user copied from their browser address bar after approving access (required for complete). It starts with http://127.0.0.1 and contains code= and state=."
+            }
+          },
+          "required" => ["action"]
+        }
+      },
+      {
         name: "download_file",
         description: "Download a file from a URL and save it locally. Use this to fetch documents, images, data files, or any other content from the web for later reference.",
         input_schema: {

@@ -352,6 +352,118 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_match %r{setup/google/}, tool_content[:content]
   end
 
+  test 'basecamp_setup check action reports not connected when unconfigured' do
+    Basecamp::Authenticator.any_instance.stubs(:configured?).returns(false)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'basecamp_setup',
+      tool_id: 'toolu_bc_check',
+      input: { 'action' => 'check' }
+    )
+    text_response = build_text_response('Basecamp is not connected yet.')
+
+    captured_tool_results = nil
+    messages_api = stub
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      captured_tool_results = user_msgs.last[:content] if user_msgs&.any?
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(messages(:alice_jennifer_hello).id)
+
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/NOT connected/i, tool_content[:content])
+  end
+
+  test 'basecamp_setup start action returns the authorization url for the user' do
+    Basecamp::Authenticator.any_instance.stubs(:start_auth).returns(
+      Basecamp::Authenticator::Result.new(
+        success: true,
+        output: 'https://launchpad.37signals.com/authorization/new?client_id=abc&state=xyz',
+        error: nil
+      )
+    )
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'basecamp_setup',
+      tool_id: 'toolu_bc_start',
+      input: { 'action' => 'start' }
+    )
+    text_response = build_text_response('Here is your Basecamp link.')
+
+    captured_tool_results = nil
+    messages_api = stub
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      captured_tool_results = user_msgs.last[:content] if user_msgs&.any?
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(messages(:alice_jennifer_hello).id)
+
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match %r{launchpad\.37signals\.com}, tool_content[:content]
+    assert_match(/paste it back/i, tool_content[:content])
+  end
+
+  test 'basecamp_setup complete action syncs tool credentials on success' do
+    agent = agents(:jennifer)
+    tool = agent.agent_tools.create!(
+      workspace: agent.workspace,
+      name: 'basecamp',
+      description: 'Basecamp',
+      input_schema: { 'type' => 'object' },
+      command_template: 'ruby scripts/run.rb {command}',
+      enabled: true
+    )
+
+    Basecamp::Authenticator.any_instance.stubs(:complete_auth).returns(
+      Basecamp::Authenticator::Result.new(success: true, output: 'Authenticated.', error: nil)
+    )
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'basecamp_setup',
+      tool_id: 'toolu_bc_complete',
+      input: { 'action' => 'complete', 'callback_url' => 'http://127.0.0.1:8976/callback?code=a&state=b' }
+    )
+    text_response = build_text_response('Connected!')
+
+    messages_api = stub
+    messages_api.stubs(:create).returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(messages(:alice_jennifer_hello).id)
+
+    expected = Basecamp::Authenticator.new(agent: agent).config_home
+    assert_equal expected, tool.reload.credentials['BASECAMP_CONFIG_HOME']
+  end
+
+  test 'basecamp_setup returns error for non-principal user' do
+    tool_use_response = build_tool_use_response(
+      tool_name: 'basecamp_setup',
+      tool_id: 'toolu_bc_noprincipal',
+      input: { 'action' => 'check' }
+    )
+    text_response = build_text_response('You need to be a principal.')
+
+    captured_tool_results = nil
+    messages_api = stub
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      captured_tool_results = user_msgs.last[:content] if user_msgs&.any?
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    ProcessMessageJob.perform_now(@message.id)
+
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/not a principal/i, tool_content[:content])
+  end
+
   test 'google_setup returns error for non-principal user' do
     tool_use_response = build_tool_use_response(
       tool_name: 'google_setup',

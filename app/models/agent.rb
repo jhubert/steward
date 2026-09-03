@@ -116,6 +116,17 @@ class Agent < ApplicationRecord
     end
   end
 
+  # Point this agent's basecamp tool at the config directory holding the
+  # credentials that basecamp_setup just wrote. Called after OAuth completes;
+  # without it the tool has no identity and refuses to run.
+  def sync_basecamp_credentials!
+    tool = agent_tools.find_by(name: "basecamp")
+    return false unless tool
+
+    tool.update!(credentials: tool.credentials.merge(Basecamp::Authenticator.new(agent: self).tool_credentials))
+    true
+  end
+
   def disable_skill!(skill_name)
     skill = Skills::Registry.instance.find(skill_name)
     raise ArgumentError, "Unknown skill: #{skill_name}" unless skill

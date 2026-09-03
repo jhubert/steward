@@ -421,6 +421,8 @@ class ProcessMessageJob < ApplicationJob
       execute_remember(input, conversation)
     when "google_setup"
       execute_google_setup(input, conversation)
+    when "basecamp_setup"
+      execute_basecamp_setup(input, conversation)
     when "download_file"
       execute_download_file(input, conversation)
     when "schedule_task"
@@ -551,6 +553,50 @@ class ProcessMessageJob < ApplicationJob
       virtual_result("google_setup", "Web setup URL (valid for 1 hour):\n#{url}\n\nSend this link to the user. They can complete Google account setup through the web interface.")
     else
       virtual_result("google_setup", "Error: Unknown action '#{action}'. Valid actions: check, start, complete, generate_link.")
+    end
+  end
+
+  def execute_basecamp_setup(input, conversation)
+    action = input["action"].to_s
+    agent = conversation.agent
+
+    # Connecting an account is a privileged act — the resulting identity is
+    # what every later Basecamp write is attributed to.
+    unless agent.principal?(conversation.user)
+      return virtual_result("basecamp_setup", "Error: This user is not a principal of this agent. Basecamp setup requires principal access.")
+    end
+
+    authenticator = Basecamp::Authenticator.new(agent: agent)
+
+    case action
+    when "check"
+      if authenticator.configured?
+        virtual_result("basecamp_setup", "Basecamp is connected for you. The basecamp tool is ready to use.")
+      else
+        virtual_result("basecamp_setup", "Basecamp is NOT connected yet. Use the 'start' action to get an authorization URL to send the user.")
+      end
+    when "start"
+      result = authenticator.start_auth
+      if result.success
+        virtual_result("basecamp_setup",
+          "Setup started. Send the user this URL:\n\n#{result.output}\n\n" \
+          "Tell them to: open it, sign in to Basecamp and approve access, then copy the FULL address " \
+          "from their browser's address bar afterwards and paste it back to you. That page will show a " \
+          "connection error — that is expected and means it worked. Then call this tool again with " \
+          "action 'complete' and their pasted URL as callback_url. The link expires in 15 minutes.")
+      else
+        virtual_result("basecamp_setup", "Error starting Basecamp setup: #{result.error}")
+      end
+    when "complete"
+      result = authenticator.complete_auth(input["callback_url"])
+      if result.success
+        agent.sync_basecamp_credentials!
+        virtual_result("basecamp_setup", "Basecamp connected successfully. The basecamp tool is ready to use.")
+      else
+        virtual_result("basecamp_setup", "Error completing Basecamp setup: #{result.error}")
+      end
+    else
+      virtual_result("basecamp_setup", "Error: Unknown action '#{action}'. Valid actions: check, start, complete.")
     end
   end
 

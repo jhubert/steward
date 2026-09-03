@@ -92,6 +92,7 @@ module Prompt
       "gmail_read_thread" => "Read a Gmail thread and get back a clean plaintext digest of every message. ALWAYS use this to read emails — do NOT try to decode Gmail base64 bodies yourself via shell. The tool output is authoritative; if the real email content isn't in the tool result, you haven't read it.",
       "gmail_reply" => "Reply to an existing Gmail thread. Pass only thread_id + body — recipients, threading headers, and subject are auto-derived from the latest inbound message so you cannot expand the CC list or mis-thread the reply. Your body MUST include a short literal quote (15+ chars, 3+ words) from the sender's latest message, or the send is rejected. This is the ONLY way to reply to an email.",
       "gmail_new_thread" => "Start a NEW Gmail thread to someone who has emailed you before or who is on your allowlist. Recipients outside that set are rejected — escalate to Jeremy via send_message first so he can approve or pre-send. Do not use this to reply to an existing thread (use gmail_reply).",
+      "basecamp_setup" => "Connect a Basecamp account to yourself so the basecamp tool works. Use 'check' first; if Basecamp isn't connected, 'start' gives you a URL to send the user, and 'complete' finishes setup with the callback URL they paste back.",
       "consult_agent" => "Consult a fellow agent for their expert opinion. Use when another agent's expertise would help — e.g., asking a financial advisor about tax implications or a scheduling agent about availability."
     }.freeze
 

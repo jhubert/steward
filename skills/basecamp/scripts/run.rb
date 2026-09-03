@@ -4,17 +4,16 @@
 require "open3"
 require "shellwords"
 
-# BASECAMP_PROFILE is injected by the executor from the agent tool's
-# credentials. It names the Basecamp CLI profile (a stored OAuth identity)
-# that this agent acts as. Requiring it is deliberate: the CLI would
-# otherwise fall back to whatever default identity happens to be configured
-# on the host, which in a multi-agent, multi-principal install means an
-# agent could silently post to Basecamp as somebody else.
-profile = ENV["BASECAMP_PROFILE"].to_s.strip
-if profile.empty?
+# BASECAMP_CONFIG_HOME is injected by the executor from the agent tool's
+# credentials. It is the agent's own config directory, holding exactly one
+# Basecamp OAuth identity. Requiring it is deliberate: the CLI would
+# otherwise fall back to whatever identity happens to be configured on the
+# host, which in a multi-agent install means an agent could silently post to
+# Basecamp as somebody else.
+config_home = ENV["BASECAMP_CONFIG_HOME"].to_s.strip
+if config_home.empty?
   warn "ERROR: No Basecamp identity configured for this agent."
-  warn "       Set BASECAMP_PROFILE in the tool's credentials to a profile"
-  warn "       created with: basecamp profile create <name>"
+  warn "       Run the basecamp_setup tool to connect a Basecamp account."
   exit 1
 end
 
@@ -122,7 +121,18 @@ end
 # --json last so the model can't select a conflicting output mode by accident.
 argv = [bin] + parsed + ["--json"]
 
-stdout, stderr, status = Open3.capture3(*argv)
+# XDG_CONFIG_HOME is pinned explicitly rather than inherited. The executor
+# also injects the *gog* config dir under the same variable for any user with
+# Google connected, so an inherited value would point this CLI at the wrong
+# directory — and, worse, at a different one depending on who the agent
+# happens to be talking to. BASECAMP_NONINTERACTIVE turns the CLI's blocking
+# selection prompts into ordinary errors, since nothing can answer them here.
+env = {
+  "XDG_CONFIG_HOME" => config_home,
+  "BASECAMP_NONINTERACTIVE" => "1"
+}
+
+stdout, stderr, status = Open3.capture3(env, *argv)
 
 $stdout.write(stdout)
 $stderr.write(stderr)

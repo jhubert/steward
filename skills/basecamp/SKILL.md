@@ -7,6 +7,10 @@ description: Manage Basecamp projects, to-dos, cards, messages, chat, schedule, 
 
 You have a `basecamp` tool that runs Basecamp CLI commands. Your Basecamp identity is injected automatically — never pass `--account`, `-a`, or `--profile`. Output is always JSON.
 
+## If Basecamp isn't connected yet
+
+If the tool reports no identity is configured, use the `basecamp_setup` tool: `check` to confirm, then `start` to get an authorization URL to send the user, then `complete` with the callback URL they paste back. The account connected there is the one all your Basecamp activity is attributed to, so connect the account the user tells you to.
+
 ## Usage
 
 Pass the subcommand as the `command` parameter (everything after `basecamp`).
@@ -89,4 +93,4 @@ These are refusals by design, not bugs. Don't try to route around one — report
 - The command string is split with POSIX shell-word rules and run directly — there is **no shell**. Pipes, redirects, `&&`, and `$'...'` quoting do not work and will be passed through as literal arguments. Use `--jq '<expr>'` instead of piping to `jq`. For multi-line content, put literal newlines inside a quoted argument.
 - Reading content from stdin (`-`) is not available through this tool. Pass content inline.
 - Long operations are subject to a 60-second timeout.
-- If you get an identity or auth error, tell the user their Basecamp profile needs to be set up by an admin.
+- If you get an identity or auth error, run `basecamp_setup` with action `check` and walk the user through connecting an account.

@@ -48,7 +48,9 @@ tools:
 
       Do NOT pass --account, -a, or --profile — your Basecamp identity is
       injected automatically, and overriding it will be rejected. Every write
-      is visible to the whole project and attributed to you.
+      is visible to the whole project and attributed to you. If this tool
+      reports that no identity is configured, use the basecamp_setup tool to
+      connect a Basecamp account first.
 
       Errors return {"ok": false, "code": ..., "retryable": ...}. Retry only
       when retryable is true.

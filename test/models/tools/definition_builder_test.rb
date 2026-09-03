@@ -20,7 +20,7 @@ class Tools::DefinitionBuilderTest < ActiveSupport::TestCase
     definitions = builder.call
 
     assert_kind_of Array, definitions
-    assert_equal 17, definitions.length
+    assert_equal 18, definitions.length
 
     names = definitions.map { |d| d[:name] }
     assert_includes names, 'find_availability'
@@ -30,6 +30,7 @@ class Tools::DefinitionBuilderTest < ActiveSupport::TestCase
     assert_includes names, 'read_notes'
     assert_includes names, 'remember'
     assert_includes names, 'google_setup'
+    assert_includes names, 'basecamp_setup'
     assert_includes names, 'download_file'
     assert_includes names, 'schedule_task'
     assert_includes names, 'list_scheduled_tasks'
