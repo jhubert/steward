@@ -3,73 +3,103 @@ class ExtractMemoryJob < ApplicationJob
 
   discard_on ActiveRecord::RecordNotFound
 
+  # Separate namespace from ProcessMessageJob's conversation lock (which uses
+  # namespace 1) — extraction shouldn't block message processing or vice versa.
+  LOCK_NAMESPACE = 2
+
   def perform(conversation_id)
     conversation = Conversation.find(conversation_id)
     Current.workspace = conversation.workspace
 
-    state = conversation.ensure_state!
-    unextracted = state.unextracted_messages.limit(50)
-    return if unextracted.empty?
+    # The sibling sweep in ProcessMessageJob can enqueue this multiple times
+    # for the same conversation before the first run advances the extraction
+    # pointer. Without serializing, concurrent runs see the same unextracted
+    # messages and double-extract them into duplicate MemoryItem records.
+    unless acquire_conversation_lock(conversation)
+      self.class.set(wait: 5.seconds).perform_later(conversation_id)
+      return
+    end
 
-    context = dedup_context(conversation)
-    supersedable_ids = context.map(&:id).to_set
+    begin
+      state = conversation.ensure_state!
+      unextracted = state.unextracted_messages.limit(50)
+      return if unextracted.empty?
 
-    extractor = Memory::Extractor.new(agent: conversation.agent)
-    items = extractor.call(messages: unextracted, context: context)
+      context = dedup_context(conversation)
+      supersedable_ids = context.map(&:id).to_set
 
-    last_message = unextracted.last
+      extractor = Memory::Extractor.new(agent: conversation.agent)
+      items = extractor.call(messages: unextracted, context: context)
 
-    outgoing_commitments_to_add = []
+      last_message = unextracted.last
 
-    items.each do |item|
-      record = MemoryItem.create!(
-        workspace: conversation.workspace,
-        user: conversation.user,
-        agent: conversation.agent,
-        conversation: conversation,
-        category: item[:category],
-        content: item[:content],
-        observed_at: item[:observed_at],
-        subject_scope: item[:scope] || 'principal',
-        expires_at: MemoryItem.expiry_for(item[:durability]),
-        visibility: item[:core] ? MemoryItem::SHARED_VISIBILITY : MemoryItem::AGENT_VISIBILITY,
-        metadata: {
-          source_message_range: [unextracted.first.id, last_message.id],
-          durability: item[:durability]
-        }
-      )
-      GenerateEmbeddingJob.perform_later(record.id)
+      outgoing_commitments_to_add = []
 
-      retire_superseded(item[:supersedes], record, supersedable_ids)
+      items.each do |item|
+        record = MemoryItem.create!(
+          workspace: conversation.workspace,
+          user: conversation.user,
+          agent: conversation.agent,
+          conversation: conversation,
+          category: item[:category],
+          content: item[:content],
+          observed_at: item[:observed_at],
+          subject_scope: item[:scope] || 'principal',
+          expires_at: MemoryItem.expiry_for(item[:durability]),
+          visibility: item[:core] ? MemoryItem::SHARED_VISIBILITY : MemoryItem::AGENT_VISIBILITY,
+          metadata: {
+            source_message_range: [unextracted.first.id, last_message.id],
+            durability: item[:durability]
+          }
+        )
+        GenerateEmbeddingJob.perform_later(record.id)
 
-      # Lift agent-side commitments into the relationship-level state so
-      # they surface at the top of every future prompt for this user until
-      # the agent marks them done.
-      if item[:category] == 'commitment' && item[:subject] == 'agent'
-        outgoing_commitments_to_add << {
-          "text" => item[:content],
-          "made_at" => Time.current.iso8601,
-          "memory_item_id" => record.id,
-          "source_conversation_id" => conversation.id
-        }
+        retire_superseded(item[:supersedes], record, supersedable_ids)
+
+        # Lift agent-side commitments into the relationship-level state so
+        # they surface at the top of every future prompt for this user until
+        # the agent marks them done.
+        if item[:category] == 'commitment' && item[:subject] == 'agent'
+          outgoing_commitments_to_add << {
+            "text" => item[:content],
+            "made_at" => Time.current.iso8601,
+            "memory_item_id" => record.id,
+            "source_conversation_id" => conversation.id
+          }
+        end
       end
+
+      if outgoing_commitments_to_add.any?
+        relationship = AgentUserState.for(user: conversation.user, agent: conversation.agent)
+        existing = Array(relationship.outgoing_commitments)
+        relationship.update!(outgoing_commitments: existing + outgoing_commitments_to_add)
+      end
+
+      # Always advance pointer — even if nothing extracted — to avoid re-processing
+      state.advance_extraction!(last_message.id)
+
+      Rails.logger.info(
+        "[Memory] Conversation #{conversation.id}: extracted #{items.size} items from #{unextracted.size} messages"
+      )
+    ensure
+      release_conversation_lock(conversation)
     end
-
-    if outgoing_commitments_to_add.any?
-      relationship = AgentUserState.for(user: conversation.user, agent: conversation.agent)
-      existing = Array(relationship.outgoing_commitments)
-      relationship.update!(outgoing_commitments: existing + outgoing_commitments_to_add)
-    end
-
-    # Always advance pointer — even if nothing extracted — to avoid re-processing
-    state.advance_extraction!(last_message.id)
-
-    Rails.logger.info(
-      "[Memory] Conversation #{conversation.id}: extracted #{items.size} items from #{unextracted.size} messages"
-    )
   end
 
   private
+
+  def acquire_conversation_lock(conversation)
+    result = ActiveRecord::Base.connection.select_value(
+      "SELECT pg_try_advisory_lock(#{LOCK_NAMESPACE}, #{conversation.id})"
+    )
+    result == true
+  end
+
+  def release_conversation_lock(conversation)
+    ActiveRecord::Base.connection.execute(
+      "SELECT pg_advisory_unlock(#{LOCK_NAMESPACE}, #{conversation.id})"
+    )
+  end
 
   # Retire a fact the new one replaces. The extractor proposes the id; we only
   # act on it if that id was in the context we actually showed it, which keeps

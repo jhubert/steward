@@ -106,6 +106,15 @@ class Tools::ExecutorTest < ActiveSupport::TestCase
     assert_includes result.stdout, 'val123'
   end
 
+  test 'call preserves multi-byte UTF-8 output such as em-dashes' do
+    @tool.command_template = 'bash -c {cmd}'
+    @tool.working_directory = nil
+    executor = Tools::Executor.new(agent_tool: @tool)
+
+    result = executor.call({ 'cmd' => "printf 'em\xE2\x80\x94dash'" })
+    assert_equal "em—dash", result.stdout
+  end
+
   test 'call merges extra_env into environment' do
     @tool.command_template = 'bash -c {cmd}'
     @tool.credentials = { 'TOOL_KEY' => 'from_tool' }
