@@ -601,8 +601,8 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
         'run_at' => 1.hour.from_now.iso8601,
         'interval' => 'custom',
         'interval_seconds' => 600,
-        'tool_name' => 'find_availability',
-        'tool_input' => { 'attendees' => 'alice@example.com' }
+        'tool_name' => 'search_contacts',
+        'tool_input' => { 'query' => 'alice' }
       }
     )
     text_response = build_text_response('Direct task scheduled!')
@@ -628,14 +628,53 @@ class ProcessMessageJobTest < ActiveSupport::TestCase
     assert_equal 'Check mail every 10 min', task.description
     assert_equal 600, task.interval_seconds
     assert task.direct_execution?
-    assert_equal agent_tools(:jennifer_scheduling), task.agent_tool
-    assert_equal({ 'attendees' => 'alice@example.com' }, task.tool_input)
+    assert_equal agent_tools(:jennifer_moxie), task.agent_tool
+    assert_equal({ 'query' => 'alice' }, task.tool_input)
     assert_equal users(:alice), task.user
 
     assert captured_tool_results
     tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
     assert_match(/Task scheduled/, tool_content[:content])
-    assert_match(/direct: find_availability/, tool_content[:content])
+    assert_match(/direct: search_contacts/, tool_content[:content])
+  end
+
+  test 'schedule_task rejects duplicate recurring direct-execution task for same tool' do
+    scheduled_tasks(:alice_direct_mail_check)
+
+    tool_use_response = build_tool_use_response(
+      tool_name: 'schedule_task',
+      tool_id: 'toolu_sched_dup',
+      input: {
+        'description' => 'Check availability again',
+        'run_at' => 1.hour.from_now.iso8601,
+        'interval' => 'custom',
+        'interval_seconds' => 600,
+        'tool_name' => 'find_availability',
+        'tool_input' => { 'attendees' => 'alice@example.com' }
+      }
+    )
+    text_response = build_text_response('Already scheduled.')
+
+    messages_api = stub
+    captured_tool_results = nil
+    messages_api.stubs(:create).with { |**params|
+      user_msgs = params[:messages]&.select { |m| m[:role] == 'user' && m[:content].is_a?(Array) }
+      if user_msgs&.any?
+        captured_tool_results = user_msgs.last[:content]
+      end
+      true
+    }.returns(tool_use_response).then.returns(text_response)
+    Rails.configuration.anthropic_client.stubs(:messages).returns(messages_api)
+
+    jennifer_message = messages(:alice_jennifer_hello)
+
+    assert_no_difference 'ScheduledTask.count' do
+      ProcessMessageJob.perform_now(jennifer_message.id)
+    end
+
+    assert captured_tool_results
+    tool_content = captured_tool_results.find { |r| r[:type] == 'tool_result' }
+    assert_match(/already exists/, tool_content[:content])
   end
 
   test 'schedule_task rejects virtual tool names' do
