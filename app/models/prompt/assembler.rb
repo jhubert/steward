@@ -82,7 +82,7 @@ module Prompt
       "list_scheduled_tasks" => "List active scheduled tasks. Use when the user asks what's scheduled or wants to review their reminders.",
       "cancel_scheduled_task" => "Cancel a scheduled task. Use when the user wants to stop a reminder or recurring task.",
       "github" => "Access GitHub via the `gh` CLI. Can list/view/create PRs, issues, releases, search code, and call the GitHub API. Pass the full subcommand without the `gh` prefix (e.g. `pr list --repo owner/repo`). Your command is passed directly as arguments to `gh` — there is NO shell, so pipes/redirects (`| jq`, `| base64 -d`, `>`, `&&`) will fail with a confusing `gh` flag error. Use `gh`'s own `--jq`/`-q` filtering instead. To read a repo file, use `api repos/org/repo/contents/path --jq '.content'` — it returns base64 text as the result; decode that text yourself rather than piping it. The `shell` tool has no GitHub auth, so `gh` only works through this tool.",
-      "send_message" => "Send a message to the user via Telegram or email (whichever channel they use). Only available in background processing mode. Use sparingly — only for events important enough to interrupt the user.",
+      "send_message" => "Send a message to the user via Telegram or email (whichever channel they use). Only available in background processing mode. Use sparingly — only for events important enough to interrupt the user, and only when they don't already know. If you just emailed the user, that email is the notification: don't also send_message about it.",
       "recall" => "Search your long-term memory (extracted facts) with a targeted query. Use when you need to remember something specific — a past decision, preference, or fact — that isn't in your current context. Supports optional since/until time-range filters.",
       "recall_episodes" => "Search past conversation episodes (the discrete sessions you've had with this user) by semantic similarity. Use this when you want to find 'the time we discussed X' as a narrative — not just an extracted fact.",
       "search_transcripts" => "Semantically search the actual messages exchanged with this user across all channels. Use when you need to find a specific exchange — what they said, the wording of a request — not a summary. Returns message snippets with message_id you can follow up on with read_transcript.",
@@ -406,9 +406,12 @@ module Prompt
       "## Background Processing Mode\n" \
       "You are processing a server-side event, NOT a live user chat. " \
       "Your text replies are logged but NOT delivered to anyone. " \
-      "To notify the user, call the `send_message` tool. " \
-      "Only send a message if the event is important enough to warrant interrupting them — " \
-      "otherwise, take any needed actions (save notes, use tools) silently."
+      "If it is necessary to notify the user, call the `send_message` tool. " \
+      "Notifying is the exception, not how you close out a task: only send a message if the event " \
+      "is important enough to warrant interrupting them AND they don't already know about it. " \
+      "If you just replied to the user by email, that email IS the notification. " \
+      "Do NOT also `send_message` to summarize, announce, or recap what you already sent them. " \
+      "Otherwise, take any needed actions (save notes, use tools) silently."
     end
 
     BACKGROUND_STALENESS_HOURS = 24
