@@ -242,7 +242,7 @@ module Tools
 
     SEND_MESSAGE_TOOL = {
       name: "send_message",
-      description: "Send a message to the user via their Telegram chat. Use this in background processing mode to notify the user about important events. Only send messages worth interrupting the user for.",
+      description: "Send a message to the user via their Telegram chat. Use this in background processing mode to notify the user about important events. Only send messages worth interrupting the user for, and only when the user doesn't already know. If you just replied to the user by email, that email is the notification — do NOT call this tool to summarize or announce it.",
       input_schema: {
         "type" => "object",
         "properties" => {
