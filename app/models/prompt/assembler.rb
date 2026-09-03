@@ -121,6 +121,12 @@ module Prompt
         lines << "- **invite_user**: #{CAPABILITY_HINTS['invite_user']}"
       end
 
+      # Only worth prompt space for agents that actually have the basecamp
+      # tool; every other agent gets basecamp_setup in its schema anyway.
+      if @agent.enabled_tools.any? { |t| t.name == "basecamp" }
+        lines << "- **basecamp_setup**: #{CAPABILITY_HINTS['basecamp_setup']}"
+      end
+
       if @agent.own_gog_env.present?
         lines << "- **gmail_read_thread**: #{CAPABILITY_HINTS['gmail_read_thread']}"
         lines << "- **gmail_reply**: #{CAPABILITY_HINTS['gmail_reply']}"
