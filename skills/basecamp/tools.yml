@@ -1,0 +1,72 @@
+tools:
+  - name: basecamp
+    description: >-
+      Execute Basecamp commands via the basecamp CLI. Pass the full command
+      string (everything after "basecamp"). Output is always JSON.
+
+      DISCOVERY: projects list | url parse <url> (extract account/project/
+      recording IDs from a Basecamp URL) | search <query> | show <id> --in
+      PROJECT | commands --json (full catalog) | <command> --help
+
+      PROJECT SCOPE: most commands require --in PROJECT_ID. Exceptions that
+      work account-wide with no project: reports assigned | reports overdue |
+      reports schedule | assignments list | notifications list | search. The
+      list commands todos/cards/messages/comments/files also accept
+      --all-projects, which returns the first 100 items unless you pass
+      --limit N or --all.
+
+      TODOS: todos list --in PROJECT [--all-projects] [--overdue] | todos show
+      ID --in PROJECT | todos create "Title" --in PROJECT --list TODOLIST_ID
+      [--due YYYY-MM-DD] [--assignee PERSON_ID] [--description TEXT] | todos
+      update ID --in PROJECT | todos complete ID --in PROJECT | todos
+      uncomplete ID --in PROJECT | todolists list --in PROJECT
+
+      CARDS: cards list --in PROJECT | cards create "Title" --in PROJECT |
+      cards update ID --in PROJECT | cards move ID --in PROJECT | cards done
+      ID --in PROJECT | cards columns --in PROJECT
+
+      MESSAGES & COMMENTS: messages list --in PROJECT | messages create
+      "Subject" --in PROJECT | comments list RECORDING_ID --in PROJECT |
+      comments create RECORDING_ID "Body" --in PROJECT. Message and comment
+      bodies accept Markdown; todo/doc/card content is sent as-is.
+
+      CHAT: chat messages --in PROJECT | chat post "Text" --in PROJECT
+
+      OTHER: schedule entries --in PROJECT | docs list --in PROJECT | files
+      list --in PROJECT | people list --in PROJECT | people pingable --in
+      PROJECT (IDs for @mentions) | notifications list | reports assigned
+
+      MENTIONS: prefer [@Name](person:ID) with an ID from "people pingable".
+      Bare @Name uses fuzzy matching and may resolve to the wrong person.
+
+      BLOCKED (these return an error, by design — do not try to work around
+      them): any delete/trash/archive/remove action; people add; recordings
+      visibility; and the webhooks, accounts, profile, config, setup, migrate,
+      upgrade and tools command groups. Of auth, only "auth status" is allowed.
+      If something needs deleting or an account setting changed, report it and
+      let a human do it.
+
+      Do NOT pass --account, -a, or --profile — your Basecamp identity is
+      injected automatically, and overriding it will be rejected. Every write
+      is visible to the whole project and attributed to you.
+
+      Errors return {"ok": false, "code": ..., "retryable": ...}. Retry only
+      when retryable is true.
+
+      IMPORTANT: this command string is parsed with POSIX shell-word-splitting
+      only — it does NOT run through a real shell. Pipes (|), redirects (>,
+      2>&1), && and bash ANSI-C $'...' quoting are NOT supported and will be
+      passed through as literal arguments, causing errors. Use the built-in
+      --jq '<expr>' flag instead of piping to jq. For multi-line text, put
+      literal newline characters inside a quoted string. Reading content from
+      stdin ("-") is not supported here; pass content inline.
+    input_schema:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: 'The basecamp command to run (everything after "basecamp"), e.g. "todos list --in 12345 --overdue"'
+    command_template: "ruby scripts/run.rb {command}"
+    timeout_seconds: 60
