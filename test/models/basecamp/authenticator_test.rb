@@ -52,7 +52,32 @@ class Basecamp::AuthenticatorTest < ActiveSupport::TestCase
   end
 
   test "tool_credentials point at the agent's own config home" do
+    @auth.stubs(:resolve_account_id).returns(nil)
     assert_equal({ "BASECAMP_CONFIG_HOME" => @auth.config_home }, @auth.tool_credentials)
+  end
+
+  test "tool_credentials carry the account id when exactly one account exists" do
+    @auth.stubs(:run_cli).returns([{ "ok" => true, "data" => [{ "id" => 6138900, "name" => "Boardwise" }] }.to_json, "", stub(success?: true)])
+
+    assert_equal "6138900", @auth.resolve_account_id
+    assert_equal "6138900", @auth.tool_credentials["BASECAMP_ACCOUNT_ID"]
+  end
+
+  # Guessing here could post to the wrong company's Basecamp.
+  test "does not guess an account id when the login can reach several" do
+    @auth.stubs(:run_cli).returns([
+      { "ok" => true, "data" => [{ "id" => 1, "name" => "Acme" }, { "id" => 2, "name" => "Other" }] }.to_json,
+      "", stub(success?: true)
+    ])
+
+    assert_nil @auth.resolve_account_id
+    assert_not_includes @auth.tool_credentials.keys, "BASECAMP_ACCOUNT_ID"
+    assert_equal ["Acme (1)", "Other (2)"], @auth.available_accounts
+  end
+
+  test "resolve_account_id returns nil when the CLI call fails" do
+    @auth.stubs(:run_cli).returns(["", "boom", stub(success?: false)])
+    assert_nil @auth.resolve_account_id
   end
 
   # The CLI names the bare endpoint in a banner line before printing the real

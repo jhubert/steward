@@ -591,7 +591,18 @@ class ProcessMessageJob < ApplicationJob
       result = authenticator.complete_auth(input["callback_url"])
       if result.success
         agent.sync_basecamp_credentials!
-        virtual_result("basecamp_setup", "Basecamp connected successfully. The basecamp tool is ready to use.")
+        if authenticator.resolve_account_id
+          virtual_result("basecamp_setup", "Basecamp connected successfully. The basecamp tool is ready to use.")
+        else
+          # Authenticated but no single account to act in — every command would
+          # fail with "--account is required", which the agent cannot fix
+          # itself since config and --account are both blocked.
+          found = authenticator.available_accounts
+          detail = found.any? ? "This login can reach: #{found.join(', ')}." : "This login does not appear to have any Basecamp accounts."
+          virtual_result("basecamp_setup",
+            "Basecamp is authenticated, but the account to work in could not be determined automatically, so commands will fail. " \
+            "#{detail} Tell the user which account to use and ask them to have an admin set it — you cannot set it yourself.")
+        end
       else
         virtual_result("basecamp_setup", "Error completing Basecamp setup: #{result.error}")
       end

@@ -132,6 +132,11 @@ env = {
   "BASECAMP_NONINTERACTIVE" => "1"
 }
 
+# Most commands require an account. It is injected for the same reason the
+# identity is: the model must not choose which company's Basecamp it writes to.
+account_id = ENV["BASECAMP_ACCOUNT_ID"].to_s.strip
+env["BASECAMP_ACCOUNT_ID"] = account_id unless account_id.empty?
+
 stdout, stderr, status = Open3.capture3(env, *argv)
 
 $stdout.write(stdout)

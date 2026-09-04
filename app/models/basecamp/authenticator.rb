@@ -110,7 +110,40 @@ module Basecamp
 
     # Env injected into the agent's basecamp tool at call time.
     def tool_credentials
-      { "BASECAMP_CONFIG_HOME" => config_home }
+      creds = { "BASECAMP_CONFIG_HOME" => config_home }
+      account = resolve_account_id
+      creds["BASECAMP_ACCOUNT_ID"] = account if account
+      creds
+    end
+
+    # Almost every command needs an account ("--account is required (or set
+    # account_id in config)"), and OAuth alone does not establish one. Resolve
+    # it right after login so the tool works without anyone editing config by
+    # hand — the agent cannot, since `config` and `--account` are both blocked.
+    #
+    # Returns nil when the choice is not ours to make: no accounts, or more
+    # than one, where guessing could post to the wrong company's Basecamp.
+    def resolve_account_id
+      stdout, _stderr, status = run_cli("accounts", "list", "--json")
+      return nil unless status&.success?
+
+      accounts = JSON.parse(stdout).dig("data")
+      return nil unless accounts.is_a?(Array) && accounts.size == 1
+
+      accounts.first["id"]&.to_s
+    rescue JSON::ParserError
+      nil
+    end
+
+    # Names the accounts this identity can reach, for error messages when the
+    # account cannot be resolved automatically.
+    def available_accounts
+      stdout, _stderr, status = run_cli("accounts", "list", "--json")
+      return [] unless status&.success?
+
+      Array(JSON.parse(stdout).dig("data")).map { |a| "#{a['name']} (#{a['id']})" }
+    rescue JSON::ParserError
+      []
     end
 
     private
