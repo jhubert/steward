@@ -79,6 +79,26 @@ class Basecamp::AuthenticatorTest < ActiveSupport::TestCase
     assert_not_equal "https://launchpad.37signals.com/authorization/new", url
   end
 
+  # Launchpad answers "Unsupported authorization type. Use response_type=code."
+  # when the CLI's legacy type=web_server is present, so the link dies the
+  # moment a human signs in.
+  test "drops the legacy type=web_server parameter Launchpad rejects" do
+    @auth.provision!
+    log = File.join(@auth.config_home, "auth.log")
+    File.write(log, <<~LOG)
+      1. Open this URL in a browser on any device:
+         https://launchpad.37signals.com/authorization/new?client_id=abc&redirect_uri=http%3A%2F%2F127.0.0.1%3A8976%2Fcallback&response_type=code&state=xyz&type=web_server
+    LOG
+
+    url = @auth.send(:extract_auth_url, log)
+    assert_not_includes url, "type=web_server"
+    assert_includes url, "response_type=code"
+    assert_includes url, "client_id=abc"
+    assert_includes url, "state=xyz"
+    # The redirect URI must survive re-encoding intact or the callback breaks.
+    assert_equal "http://127.0.0.1:8976/callback", URI.decode_www_form(URI.parse(url).query).to_h["redirect_uri"]
+  end
+
   test "ignores a partially written url so a truncated link is never returned" do
     @auth.provision!
     log = File.join(@auth.config_home, "auth.log")

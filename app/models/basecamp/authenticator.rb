@@ -168,7 +168,26 @@ module Basecamp
       complete = text[0, last_newline + 1]
       url = complete.scan(%r{https://\S*launchpad\.37signals\.com/\S+})
                     .find { |u| u.include?("client_id=") && u.include?("state=") }
-      url&.sub(/[).,]+\z/, "")
+      return nil unless url
+
+      strip_legacy_type(url.sub(/[).,]+\z/, ""))
+    end
+
+    # The CLI sends the legacy 37signals `type=web_server` alongside the
+    # standard `response_type=code` (internal/auth/auth.go). Launchpad now
+    # rejects it with "Unsupported authorization type. Use response_type=code."
+    # even though response_type is already correct, so the link fails the
+    # moment a human signs in. The parameter is redundant — response_type
+    # names the flow — and dropping it only affects the authorize request we
+    # hand to the user. The callback, state check, and code exchange all
+    # happen inside the CLI and are untouched.
+    def strip_legacy_type(url)
+      uri = URI.parse(url)
+      params = URI.decode_www_form(uri.query.to_s).reject { |k, v| k == "type" && v == "web_server" }
+      uri.query = params.empty? ? nil : URI.encode_www_form(params)
+      uri.to_s
+    rescue URI::InvalidURIError
+      url
     end
 
     def resolve_bin
