@@ -40,7 +40,9 @@ todos update <todo_id> --in <project> --description "..."
 todolists list --in <project>
 
 # Cards (Kanban)
-cards list --in <project>
+cards list --in <project>                  # If the project has more than one card table, this
+                                            # errors with "Multiple card tables found" and lists
+                                            # their IDs — pass one via --card-table <id>
 cards create "Title" --in <project>
 cards move <card_id> --in <project>
 cards done <card_id> --in <project>
@@ -90,6 +92,7 @@ These are refusals by design, not bugs. Don't try to route around one — report
 - Reading is free — prefer looking things up over asking someone to look them up for you.
 - Comments are flat. Reply to the parent recording, not to another comment.
 - Errors come back as `{"ok": false, "code": ..., "retryable": ...}`. Retry only when `retryable` is true; otherwise report the error.
+- Every response is wrapped in a top-level `data` key — filter with `.data` (single item) or `.data[]` (list), not bare `.field`. Optional fields (e.g. `assignees` with nobody assigned) come back as `null` rather than `[]`, so `.data.assignees[]` raises "cannot iterate over: null" — guard with `(.data.assignees // [])[]` or drop the field from your filter.
 - The command string is split with POSIX shell-word rules and run directly — there is **no shell**. Pipes, redirects, `&&`, and `$'...'` quoting do not work and will be passed through as literal arguments. Use `--jq '<expr>'` instead of piping to `jq`. For multi-line content, put literal newlines inside a quoted argument.
 - Reading content from stdin (`-`) is not available through this tool. Pass content inline.
 - Long operations are subject to a 60-second timeout.
