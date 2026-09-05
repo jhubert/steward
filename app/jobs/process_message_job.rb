@@ -391,7 +391,8 @@ class ProcessMessageJob < ApplicationJob
     content = if result.timed_out
       "Error: #{result.stderr}"
     elsif result.exit_code != 0
-      "Exit code: #{result.exit_code}\nStderr: #{result.stderr}\nStdout: #{result.stdout}"
+      "Stdout: #{result.stdout}\nStderr: #{result.stderr}\n" \
+      "(exit code #{result.exit_code} — non-zero doesn't always mean failure; some commands use it to report a result, e.g. `grep -c`/`grep -q` return 1 for zero matches. Judge success from the output above, not the exit code alone.)"
     else
       result.stdout
     end
