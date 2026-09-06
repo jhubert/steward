@@ -1,11 +1,12 @@
 module Prompt
   class Assembler
-    def initialize(conversation, incoming_message: nil)
+    def initialize(conversation, incoming_message: nil, exclude_message_id: nil)
       @conversation = conversation
       @agent = conversation.agent
       @state = conversation.ensure_state!
       @budgets = @agent.token_budgets
       @incoming_message = incoming_message
+      @exclude_message_id = exclude_message_id
     end
 
     # Build the messages array for the LLM API call.
@@ -486,19 +487,23 @@ module Prompt
     OVERLAP_MESSAGES = 6
 
     def build_history
+      # The incoming message the caller is about to process is already
+      # persisted by the time the assembler runs, so it would otherwise show
+      # up here AND get appended again by the caller — exclude it.
+      scope = @conversation.messages.chronological
+      scope = scope.where.not(id: @exclude_message_id) if @exclude_message_id
+
       if @state.summarized_through_message_id
         # Messages after the summary cutoff (the primary window)
-        post = @conversation.messages.chronological
-                 .where('id > ?', @state.summarized_through_message_id).to_a
+        post = scope.where('id > ?', @state.summarized_through_message_id).to_a
 
         # Overlap: keep a few messages from just before the cutoff for continuity
-        overlap = @conversation.messages.chronological
-                    .where('id <= ?', @state.summarized_through_message_id)
+        overlap = scope.where('id <= ?', @state.summarized_through_message_id)
                     .last(OVERLAP_MESSAGES)
 
         recent = (overlap + post).last(history_message_limit)
       else
-        recent = @conversation.messages.chronological.last(history_message_limit)
+        recent = scope.last(history_message_limit)
       end
 
       # Anthropic API only accepts user/assistant roles in messages array;

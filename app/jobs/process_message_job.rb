@@ -100,7 +100,7 @@ class ProcessMessageJob < ApplicationJob
 
   def generate_reply(message, conversation, agent, adapter)
     # Build prompt from memory layers
-    assembler = Prompt::Assembler.new(conversation, incoming_message: message.content)
+    assembler = Prompt::Assembler.new(conversation, incoming_message: message.content, exclude_message_id: message.id)
     messages = assembler.call
 
     if message.metadata&.dig("system_instruction")
