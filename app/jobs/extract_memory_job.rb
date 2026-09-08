@@ -130,10 +130,18 @@ class ExtractMemoryJob < ApplicationJob
   # Now also includes the shared principal core, so an agent doesn't re-extract
   # a fact another agent already promoted. This is the point of the core: one
   # copy of "who this person is", not one per agent.
+  #
+  # Restricted to about_principal: agents that do a lot of research (market
+  # briefings, news roundups) generate a high volume of "world" facts, which
+  # otherwise dominate the most-recent-50 window and push recurring principal
+  # facts (e.g. a weekly check-in status) out of context entirely — the
+  # extractor then can't see the old fact to supersede it and just emits a
+  # near-duplicate every time.
   def dedup_context(conversation)
     MemoryItem.current
               .where(user: conversation.user)
               .readable_by_agent(conversation.agent)
+              .about_principal
               .order(created_at: :desc)
               .limit(50)
   end
