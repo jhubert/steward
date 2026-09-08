@@ -44,6 +44,14 @@ module Memory
       A useful test: would this fact still be worth knowing if you were
       talking to a different person? If yes, it is "world".
 
+      Example: in a stock market briefing, "S&P 500 closed at 5,800" or
+      "WTI crude rose 3%" is "world" — it's true regardless of who's asking.
+      "David's TWLO position is down 5% from his $201.70 entry" is
+      "principal" — it's about what THIS person holds. When extracting from
+      a research digest or briefing, default each individual data point to
+      "world" unless it's tied to something the person specifically owns,
+      decided, or asked about.
+
       Durability:
       - permanent: unlikely ever to change (birthplace, children's names,
         a past event that happened)
