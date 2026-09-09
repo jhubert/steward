@@ -19,6 +19,8 @@ Pass the subcommand as the `command` parameter (everything after `basecamp`).
 
 Most commands need a project: `--in <project_id>`. Get IDs from `projects list`, or from a URL with `url parse`.
 
+`projects list` and other cross-project commands only return projects your connected identity is a member of — not every project or organization in the Basecamp account. If a project, org, or person seems to be missing, that is almost always your identity's own membership scope, not proof the project doesn't exist or is a demo/test org. Say so explicitly rather than concluding a gap in the data — ask the human to confirm before treating an absence as meaningful.
+
 Cross-project commands that need no `--in`: `reports assigned`, `reports overdue`, `reports schedule`, `assignments list`, `notifications list`, `search`. Several list commands also accept `--all-projects` (`todos`, `cards`, `messages`, `comments`, `files`), which returns the first 100 items unless you pass `--limit N` or `--all`.
 
 ## Quick reference
