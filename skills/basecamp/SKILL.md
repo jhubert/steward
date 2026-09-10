@@ -91,6 +91,8 @@ These are refusals by design, not bugs. Don't try to route around one — report
 - Comments are flat. Reply to the parent recording, not to another comment.
 - Errors come back as `{"ok": false, "code": ..., "retryable": ...}`. Retry only when `retryable` is true; otherwise report the error.
 - The command string is split with POSIX shell-word rules and run directly — there is **no shell**. Pipes, redirects, `&&`, and `$'...'` quoting do not work and will be passed through as literal arguments. Use `--jq '<expr>'` instead of piping to `jq`. For multi-line content, put literal newlines inside a quoted argument.
+- **`--jq` filters fail hard on null, they don't skip it.** Optional fields (an unassigned to-do's `assignees`, a recording with no comments) come back as `null`, not `[]` or `{}` — `.data[].name` or `.data.assignees[].name` will error with "cannot iterate over: null" instead of returning nothing. Guard any field that might be empty: `(.data.assignees // [])[].name` or `.data.assignees[]?.name`. This applies to `comments list` (empty `.data` when there are no comments) and to `.assignees`/`.due_on`-style fields on `todos show`.
+- **`reports assigned` nests under `.data.todos[]`, not `.data[]`.** The top-level `.data` is a grouped object (`grouped_by`, `person`, `todos`), so `.data[] | .bucket.name` iterates over the wrong values and errors. Use `.data.todos[] | {id, title, due_on, project: .bucket.name}`.
 - Reading content from stdin (`-`) is not available through this tool. Pass content inline.
 - Long operations are subject to a 60-second timeout.
 - If you get an identity or auth error, run `basecamp_setup` with action `check` and walk the user through connecting an account.
