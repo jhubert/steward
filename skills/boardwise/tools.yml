@@ -9,8 +9,9 @@ tools:
       list_meetings, get_meeting, create_meeting, create_agenda_item,
       list_people, list_action_items, create_action_item, list_documents,
       list_messages, get_message, create_message. Most commands require an org
-      slug. Auth flow: 1) call auth, 2) show user the code/URL, 3) poll with
-      auth-poll until approved, 4) use other commands.
+      ID — call `me` first to get valid org IDs, never guess one. Auth flow:
+      1) call auth, 2) show user the code/URL, 3) poll with auth-poll until
+      approved, 4) use other commands.
     input_schema:
       type: object
       required:
@@ -21,6 +22,6 @@ tools:
           description: "API command to execute: me, list_groups, get_group, list_meetings, get_meeting, create_meeting, create_agenda_item, list_people, list_action_items, create_action_item, list_documents, list_messages, get_message, create_message, download_document"
         params:
           type: string
-          description: 'JSON string of parameters. Common keys: org (org slug, required for most commands), id (for get commands), status (e.g. "upcoming" for meetings), group_id, title, starts_at/ends_at (ISO 8601), location, time_zone, person_ids (JSON array), duration_minutes, description, due_by, assigned_person_ids (JSON array), subject, body. Example: {"org": "888488", "status": "upcoming"} For download_document: {"org": "888488", "id": "<doc_id>", "dest": "/tmp/doc.pdf"}'
+          description: 'JSON string of parameters. Common keys: org (numeric org ID, required for most commands — get it by calling the `me` command first; never guess it from a company name or a value mentioned in conversation), id (for get commands), status (e.g. "upcoming" for meetings), group_id, title, starts_at/ends_at (ISO 8601), location, time_zone, person_ids (JSON array), duration_minutes, description, due_by, assigned_person_ids (JSON array), subject, body. Example: {"org": "888488", "status": "upcoming"} For download_document: {"org": "888488", "id": "<doc_id>", "dest": "/tmp/doc.pdf"}'
     command_template: "python3 scripts/boardwise-tool.py {command} {params}"
     timeout_seconds: 30
