@@ -91,6 +91,7 @@ These are refusals by design, not bugs. Don't try to route around one — report
 - Comments are flat. Reply to the parent recording, not to another comment.
 - Errors come back as `{"ok": false, "code": ..., "retryable": ...}`. Retry only when `retryable` is true; otherwise report the error.
 - The command string is split with POSIX shell-word rules and run directly — there is **no shell**. Pipes, redirects, `&&`, and `$'...'` quoting do not work and will be passed through as literal arguments. Use `--jq '<expr>'` instead of piping to `jq`. For multi-line content, put literal newlines inside a quoted argument.
+- Fields like `assignees` can be `null` instead of `[]` (e.g. an unassigned todo). A filter like `[.assignees[].name]` errors with "cannot iterate over: null" in that case — guard with `[(.assignees // [])[].name]` instead.
 - Reading content from stdin (`-`) is not available through this tool. Pass content inline.
 - Long operations are subject to a 60-second timeout.
 - If you get an identity or auth error, run `basecamp_setup` with action `check` and walk the user through connecting an account.
