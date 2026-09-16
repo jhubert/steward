@@ -73,6 +73,36 @@ class RunScheduledTaskJobTest < ActiveSupport::TestCase
     end
   end
 
+  test "only one of two concurrently racing jobs fires the task" do
+    task = scheduled_tasks(:alice_daily_standup)
+    task.update_columns(next_run_at: 1.minute.ago)
+
+    ready = Queue.new
+    go = Queue.new
+
+    threads = 2.times.map do
+      Thread.new do
+        ActiveRecord::Base.connection_pool.with_connection do
+          ready << true
+          go.pop
+          RunScheduledTaskJob.perform_now(task.id)
+        end
+      end
+    end
+
+    2.times { ready.pop }
+    2.times { go << true }
+    threads.each(&:join)
+
+    trigger_messages = Message.where(role: "user")
+      .where("metadata ->> 'source' = 'trigger'")
+      .where(conversation: task.agent.conversations.where(user: task.user, channel: "background"))
+    assert_equal 1, trigger_messages.count
+
+    task.reload
+    assert task.next_run_at > Time.current
+  end
+
   test "handles missing task gracefully" do
     assert_nothing_raised do
       RunScheduledTaskJob.perform_now(-1)
