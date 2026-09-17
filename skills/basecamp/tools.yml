@@ -23,7 +23,10 @@ tools:
 
       CARDS: cards list --in PROJECT | cards create "Title" --in PROJECT |
       cards update ID --in PROJECT | cards move ID --in PROJECT | cards done
-      ID --in PROJECT | cards columns --in PROJECT
+      ID --in PROJECT | cards columns --in PROJECT. Projects with more than
+      one card table require --card-table ID on every cards subcommand; if
+      you omit it and the project is ambiguous, the error response lists the
+      valid card-table IDs to retry with.
 
       MESSAGES & COMMENTS: messages list --in PROJECT | messages create
       "Subject" --in PROJECT | comments list RECORDING_ID --in PROJECT |
