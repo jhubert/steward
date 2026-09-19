@@ -1,0 +1,35 @@
+tools:
+  - name: yahoo_quote
+    description: >-
+      Get the current price and key stats for one or more stock, ETF, index, or
+      crypto symbols from Yahoo Finance. Returns price, change and percent
+      change, market state, open, previous close, day range, 52-week range,
+      volume, market cap, and exchange — plus pre/post-market price when the
+      market is closed.
+
+      Use this instead of browse_web for any Yahoo Finance quote lookup. It is
+      roughly 8x faster (about 0.5s versus 4s) and returns clean numbers rather
+      than scraped page text.
+
+      Pass one symbol, or several separated by commas (max 10 per call):
+      "AAPL" | "AAPL,MSFT,NVDA" | "BTC-USD" | "SHOP.TO"
+
+      Symbols follow Yahoo's own format: plain tickers for US listings
+      (AAPL, INTC), a suffix for other exchanges (SHOP.TO for Toronto,
+      VOD.L for London), and -USD for crypto (BTC-USD, ETH-USD).
+
+      This covers quote pages only. For market movers, screeners, earnings
+      calendars, or news, use browse_web with the relevant Yahoo Finance URL.
+
+      If a symbol reports "no quote data found", fall back to browse_web for
+      that symbol and mention the fallback in your reply.
+    input_schema:
+      type: object
+      required:
+        - symbols
+      properties:
+        symbols:
+          type: string
+          description: 'One symbol, or several comma-separated (max 10), e.g. "AAPL" or "AAPL,MSFT,BTC-USD"'
+    command_template: "python3 scripts/quote.py {symbols}"
+    timeout_seconds: 30
