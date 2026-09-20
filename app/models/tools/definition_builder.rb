@@ -272,6 +272,22 @@ module Tools
       }
     }.freeze
 
+    # The counterpart to send_message. Background turns always delivered their
+    # final reply, so an agent that decided not to interrupt could only say so
+    # in prose — and that sentence got delivered as the interruption. This
+    # gives the decision somewhere to go.
+    STAY_SILENT_TOOL = {
+      name: "stay_silent",
+      description: "Finish this background turn without notifying the user. Use it when you were triggered by a scheduled task or another automated event and found nothing the user needs to know: the check came back clean, the digest went out with nothing in it, the activity was the user's own, or you already notified them another way such as email. Your work is still recorded and you can still refer back to it later — the user simply isn't interrupted. Prefer this over sending a message that says nothing happened.",
+      input_schema: {
+        "type" => "object",
+        "properties" => {
+          "reason" => { "type" => "string", "description" => "Brief note on why no notification was warranted (e.g., 'no unread mail', 'digest sent, no merges in window'). Recorded for review." }
+        },
+        "required" => ["reason"]
+      }
+    }.freeze
+
     GMAIL_READ_THREAD_TOOL = {
       name: "gmail_read_thread",
       description: "Read a Gmail thread from your inbox and get back a clean plaintext digest of every message (sender, recipients, date, body with quoted history stripped). Use this whenever you need to understand what was said in an email thread — it is the only correct way to read an email. Do NOT try to decode Gmail's base64 bodies yourself via shell; use this tool so the content you see is verifiably the real email.",
@@ -322,6 +338,11 @@ module Tools
       tools = @agent.enabled_tools.map(&:to_anthropic_tool)
       tools.concat(BUILTIN_TOOLS)
       tools << SEND_MESSAGE_TOOL if @conversation&.background?
+      # Offered only where silence is a real option: background turns whose
+      # agent has the gate switched on. Elsewhere a reply is always expected.
+      if @conversation&.background? && Decisions::DeliveryGate.mode_for(@agent) != Decisions::DeliveryGate::OFF
+        tools << STAY_SILENT_TOOL
+      end
       tools << INVITE_USER_TOOL if @agent.settings&.dig("can_invite")
       # GOG agents use the structured gmail_* tools. Postmark-only agents
       # continue to use send_email (Postmark has its own threading model and

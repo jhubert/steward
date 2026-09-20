@@ -57,7 +57,22 @@ class ProcessMessageJob < ApplicationJob
     # Delivery happens outside the transaction — if this fails, the reply
     # is already persisted and retry will skip the LLM call above
     adapter = adapter_for(conversation)
-    adapter.send_reply(conversation, reply)
+
+    # Agent-initiated turns get a say on whether they're worth interrupting
+    # for. In shadow mode the verdict is recorded and then ignored, so this
+    # changes nothing until an agent is explicitly moved to "enforcing".
+    decision = evaluate_delivery(conversation, message, reply)
+    suppress = decision && !decision.deliver && decision.mode == Decisions::DeliveryGate::ENFORCING
+
+    if suppress
+      Rails.logger.info(
+        "[DeliveryGate] Held reply #{reply&.id} in conversation #{conversation.id}: #{decision.reason}"
+      )
+    else
+      adapter.send_reply(conversation, reply)
+    end
+
+    record_delivery_decision(decision, conversation, reply, delivered: !suppress)
 
     # Clean up ephemeral system instructions — they were only needed to
     # prompt the agent and shouldn't persist in conversation history.
@@ -315,6 +330,46 @@ class ProcessMessageJob < ApplicationJob
     Rails.logger.error("[ProcessMessageJob] Failed to send error notification: #{e.message}")
   end
 
+  # Returns a DeliveryGate::Decision, or nil when the gate doesn't apply.
+  # Never raises and never blocks delivery: any failure here means the message
+  # goes out, which is the behaviour we had before the gate existed.
+  def evaluate_delivery(conversation, source_message, reply)
+    return nil if reply.nil?
+    return nil unless Decisions::DeliveryGate.applicable?(conversation, source_message)
+    return nil if Decisions::DeliveryGate.mode_for(conversation.agent) == Decisions::DeliveryGate::OFF
+
+    Decisions::DeliveryGate.new(
+      agent: conversation.agent,
+      conversation: conversation,
+      reply: reply,
+      source_message: source_message
+    ).call(agent_declared_silent: @stay_silent_reason.present?)
+  rescue StandardError => e
+    Rails.logger.warn("[DeliveryGate] Evaluation failed, delivering: #{e.class}: #{e.message}")
+    nil
+  end
+
+  def record_delivery_decision(decision, conversation, reply, delivered:)
+    return if decision.nil?
+
+    DeliveryDecision.create!(
+      workspace: conversation.workspace,
+      agent: conversation.agent,
+      conversation: conversation,
+      message: reply,
+      mode: decision.mode,
+      would_deliver: decision.deliver,
+      delivered: delivered,
+      reason: [decision.reason, @stay_silent_reason.presence].compact.join(": "),
+      signals: decision.signals || {},
+      duration_ms: decision.duration_ms,
+      input_tokens: decision.input_tokens
+    )
+  rescue StandardError => e
+    # Audit logging must never cost a delivered message.
+    Rails.logger.warn("[DeliveryGate] Could not record decision: #{e.class}: #{e.message}")
+  end
+
   def adapter_for(conversation)
     case conversation.channel
     when 'telegram'
@@ -413,6 +468,17 @@ class ProcessMessageJob < ApplicationJob
       new_scratchpad += "[#{Time.current.strftime('%Y-%m-%d %H:%M')}] #{note}"
       state.update!(scratchpad: new_scratchpad.last(10_000))
       virtual_result("save_note", "Note saved silently. Do not narrate this action to the user — reply as if it hadn't happened.", input: note.truncate(200))
+    when "stay_silent"
+      # Recorded on the job instance and read at the delivery point below.
+      # This is the agent's own decision, so it skips the Jev evaluation
+      # entirely rather than being weighed against it.
+      @stay_silent_reason = input["reason"].to_s.presence || "(no reason given)"
+      virtual_result(
+        "stay_silent",
+        "Noted — this turn will finish without notifying the user. Do not narrate this or explain yourself; " \
+        "your reply text is recorded but won't be delivered.",
+        input: @stay_silent_reason.truncate(200)
+      )
     when "read_notes"
       state = conversation.ensure_state!
       content = state.scratchpad.present? ? state.scratchpad : "(Scratchpad is empty)"

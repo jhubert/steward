@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_03_122500) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vector"
@@ -116,6 +116,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_03_122500) do
     t.index ["workspace_id", "agent_id", "channel", "external_thread_key"], name: "idx_conversations_email_thread_lookup", unique: true, where: "((channel)::text = 'email'::text)"
     t.index ["workspace_id", "user_id", "agent_id", "channel", "external_thread_key"], name: "idx_conversations_non_email_lookup", unique: true, where: "((channel)::text <> 'email'::text)"
     t.index ["workspace_id"], name: "index_conversations_on_workspace_id"
+  end
+
+  create_table "delivery_decisions", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.bigint "conversation_id", null: false
+    t.datetime "created_at", null: false
+    t.boolean "delivered", null: false
+    t.integer "duration_ms"
+    t.integer "input_tokens"
+    t.bigint "message_id"
+    t.string "mode", null: false
+    t.string "reason", null: false
+    t.jsonb "signals", default: {}
+    t.datetime "updated_at", null: false
+    t.bigint "workspace_id", null: false
+    t.boolean "would_deliver", null: false
+    t.index ["agent_id", "created_at"], name: "index_delivery_decisions_on_agent_id_and_created_at"
+    t.index ["agent_id", "would_deliver", "created_at"], name: "index_delivery_decisions_on_agent_and_verdict"
+    t.index ["conversation_id"], name: "index_delivery_decisions_on_conversation_id"
+    t.index ["message_id"], name: "index_delivery_decisions_on_message_id"
+    t.index ["workspace_id"], name: "index_delivery_decisions_on_workspace_id"
   end
 
   create_table "episodes", force: :cascade do |t|
