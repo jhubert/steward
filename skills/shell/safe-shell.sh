@@ -29,7 +29,6 @@ declare -a BLOCKED=(
   # Disk/device operations
   "mkfs"
   "dd if="
-  "> /dev/"
   # System control
   "shutdown"
   "reboot"
@@ -54,6 +53,13 @@ for pattern in "${BLOCKED[@]}"; do
     exit 1
   fi
 done
+
+# Block writes to raw device files (e.g. > /dev/sda) but allow safe sinks
+# like /dev/null that are routine in ordinary shell usage.
+if [[ "$CMD_LOWER" =~ \>[[:space:]]*/dev/ ]] && ! [[ "$CMD_LOWER" =~ \>[[:space:]]*/dev/(null|zero|stdout|stderr|tty)([^a-z0-9]|$) ]]; then
+  echo "BLOCKED: This command contains a restricted pattern ('> /dev/'). If you believe this is needed, ask the user to run it manually." >&2
+  exit 1
+fi
 
 # --- BLOCKED: Credential/secret access ---
 declare -a SECRETS_BLOCKED=(
