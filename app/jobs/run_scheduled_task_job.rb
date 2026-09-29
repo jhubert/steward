@@ -4,12 +4,16 @@ class RunScheduledTaskJob < ApplicationJob
   def perform(scheduled_task_id)
     task = ScheduledTask.unscoped.find_by(id: scheduled_task_id)
     return unless task
-    return unless task.enabled?
-    return unless task.next_run_at <= Time.current
+
+    claimed = task.with_lock do
+      next false unless task.enabled? && task.next_run_at <= Time.current
+
+      task.advance!
+      true
+    end
+    return unless claimed
 
     Current.workspace = task.workspace
-
-    task.advance!
 
     if task.direct_execution?
       run_direct(task)
