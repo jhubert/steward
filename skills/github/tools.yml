@@ -8,7 +8,13 @@ tools:
       arguments, causing errors. Use plain 'single' or "double" quoted
       arguments only. For multi-line text (e.g. issue/PR bodies), put literal
       newline characters inside a quoted string rather than using $'...\n...'
-      escapes.
+      escapes. For --jq expressions that use jq string interpolation (e.g.
+      "\(.field)"), wrap the whole --jq expression in single quotes so the
+      double quotes survive word-splitting, e.g. --jq '.items[] |
+      "\(.id) \(.name)"' — otherwise the inner double quotes are stripped
+      as splitting and jq sees a bare \( token, which is a syntax error.
+      There is no "merged" field for --json on pr view/list — use "state"
+      (value "MERGED") or "mergedAt" instead.
     input_schema:
       type: object
       required:

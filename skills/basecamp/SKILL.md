@@ -51,6 +51,7 @@ messages list --in <project>
 messages create "Subject" --in <project>
 comments list <recording_id> --in <project>
 comments create <recording_id> "Comment body" --in <project>
+comments update <comment_id> "New content" --in <project>  # content is positional, not --content
 
 # Chat (Campfire)
 chat post "Hello" --in <project>
