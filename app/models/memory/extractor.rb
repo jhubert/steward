@@ -87,6 +87,11 @@ module Memory
       - Only extract information useful in a DIFFERENT conversation days or weeks later
       - DO NOT extract: transient debugging state, tool availability,
         meta-commentary about the conversation itself
+      - Only extract facts stated or directly evidenced in the Conversation
+        Segment below. The "Already Known Facts" list is for checking
+        duplicates only — never draw new content from it. In particular,
+        never restate a future-dated fact from that list (e.g. "next
+        check-in due <date>") as something that has already happened.
       - Only extract NEW information — skip anything substantively present
         in the known facts below
       - If a new fact REPLACES an existing one (e.g., the user moved cities),
