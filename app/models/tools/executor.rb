@@ -41,9 +41,23 @@ module Tools
     def build_argv(input)
       normalized = input.transform_keys(&:to_s)
       tokens = Shellwords.shellsplit(@tool.command_template)
-      tokens.map do |token|
-        token.gsub(/\{(\w+)\}/) { normalized.fetch($1, $1).to_s }
+      argv = []
+      tokens.each do |token|
+        key = token[/\A\{(\w+)\}\z/, 1]
+        if key
+          if normalized.key?(key)
+            argv << normalized[key].to_s
+          else
+            # Omitted optional param: drop its flag too, so the underlying
+            # command's own default applies instead of the literal "{key}"
+            # placeholder name being passed as the value.
+            argv.pop if argv.last&.start_with?("-")
+          end
+        else
+          argv << token
+        end
       end
+      argv
     end
 
     def build_env

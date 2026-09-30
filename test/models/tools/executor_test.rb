@@ -13,11 +13,13 @@ class Tools::ExecutorTest < ActiveSupport::TestCase
     assert_equal ['python3', 'find-availability.py', 'alice@example.com', '--duration', '30'], argv
   end
 
-  test 'build_argv handles missing input keys gracefully' do
+  test 'build_argv drops the flag when its input key is missing' do
     executor = Tools::Executor.new(agent_tool: @tool)
     argv = executor.build_argv({ 'attendees' => 'alice@example.com' })
-    # Missing {duration} keeps the key name as fallback
-    assert_equal ['python3', 'find-availability.py', 'alice@example.com', '--duration', 'duration'], argv
+    # Missing {duration} drops both "--duration" and the placeholder, so the
+    # underlying command falls back to its own default instead of receiving
+    # the literal string "duration" as a value.
+    assert_equal ['python3', 'find-availability.py', 'alice@example.com'], argv
   end
 
   test 'build_argv prevents shell injection via input values' do
