@@ -42,7 +42,7 @@ todolists list --in <project>
 # Cards (Kanban)
 cards list --in <project>
 cards create "Title" --in <project>
-cards move <card_id> --in <project>
+cards move <card_id> --in <project> --to <column_id>  # not --column; get column_id from `cards columns`
 cards done <card_id> --in <project>
 cards columns --in <project>
 
